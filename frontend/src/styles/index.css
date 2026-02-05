@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+body {
+  background: var(--tg-theme-bg-color, #030712);
+  color: var(--tg-theme-text-color, #ffffff);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
