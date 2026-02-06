@@ -12,8 +12,34 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-export function fetchGifts() {
-  return request("/gifts");
+/**
+ * Fetch gifts with multi-marketplace prices.
+ * @param {Object} params - Query parameters
+ * @param {string} [params.sort_by] - Sort field: 'name', 'best_price', 'spread_pct'
+ * @param {string} [params.sort_order] - Sort direction: 'asc', 'desc'
+ * @param {number} [params.min_spread_pct] - Minimum spread percentage filter
+ * @param {string} [params.search] - Search query
+ * @returns {Promise<{gifts: Array, meta: Object}>}
+ */
+export function fetchGifts(params = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (params.sort_by) searchParams.set("sort_by", params.sort_by);
+  if (params.sort_order) searchParams.set("sort_order", params.sort_order);
+  if (params.min_spread_pct != null) searchParams.set("min_spread_pct", params.min_spread_pct);
+  if (params.search) searchParams.set("search", params.search);
+
+  const query = searchParams.toString();
+  return request(`/gifts${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Fetch a single gift by slug.
+ * @param {string} slug - Gift slug
+ * @returns {Promise<Object>}
+ */
+export function fetchGift(slug) {
+  return request(`/gifts/${slug}`);
 }
 
 export function fetchDeal(dealId) {

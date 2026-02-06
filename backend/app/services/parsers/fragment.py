@@ -8,9 +8,12 @@ First listed price (sort ascending) = floor price in TON.
 import logging
 import re
 from decimal import Decimal
+from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
+
+from app.services.parsers.base import BaseParser, GiftPrice
 
 logger = logging.getLogger(__name__)
 
@@ -30,24 +33,37 @@ HEADERS = {
 _PRICE_RE = re.compile(r"^[\d,]+(?:\.\d+)?$")
 
 
-async def fetch_gift_price(slug: str) -> Decimal | None:
-    """
-    Fetch the floor price (in TON) for a gift collection from Fragment.
+class FragmentParser(BaseParser):
+    source_name = "Fragment"
+    supports_bulk = False
 
-    Returns the minimum listed price or None if nothing found / error.
-    """
-    url = f"{BASE_URL}/{slug}?sort=price_asc&filter=sale"
-    logger.info("Fetching Fragment price for '%s': %s", slug, url)
+    async def fetch_gift_price(self, slug: str) -> Optional[GiftPrice]:
+        """
+        Fetch the floor price (in TON) for a gift collection from Fragment.
 
-    try:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.error("Fragment request failed for '%s': %s", slug, exc)
-        return None
+        Returns GiftPrice or None if nothing found / error.
+        """
+        url = f"{BASE_URL}/{slug}?sort=price_asc&filter=sale"
+        logger.info("Fetching Fragment price for '%s': %s", slug, url)
 
-    return _parse_floor_price(resp.text, slug)
+        try:
+            async with httpx.AsyncClient(headers=HEADERS, timeout=15.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.error("Fragment request failed for '%s': %s", slug, exc)
+            return None
+
+        price = _parse_floor_price(resp.text, slug)
+        if price is None:
+            return None
+
+        return GiftPrice(
+            price=price,
+            currency="TON",
+            source=self.source_name,
+            slug=slug,
+        )
 
 
 def _parse_floor_price(html: str, slug: str) -> Decimal | None:
