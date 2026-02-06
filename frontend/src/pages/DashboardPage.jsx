@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fetchGifts } from "../api/client";
 import GiftCard from "../components/GiftCard";
 import FilterBar from "../components/FilterBar";
+import GiftDetailModal from "../components/GiftDetailModal";
 
 export default function DashboardPage() {
   const [data, setData] = useState({ gifts: [], meta: null });
@@ -13,6 +14,7 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
   const [minSpread, setMinSpread] = useState(null);
+  const [selectedGift, setSelectedGift] = useState(null);
 
   const loadGifts = useCallback(async () => {
     setLoading(true);
@@ -52,8 +54,7 @@ export default function DashboardPage() {
   };
 
   const handleGiftClick = (gift) => {
-    // Future: open detail panel/modal
-    console.log("Gift clicked:", gift.slug);
+    setSelectedGift(gift);
   };
 
   // Count arbitrage signals
@@ -111,6 +112,10 @@ export default function DashboardPage() {
 
       {!loading && !error && data.gifts.length === 0 && (
         <p className="text-gray-600 text-sm text-center mt-10">No gifts found.</p>
+      )}
+
+      {selectedGift && (
+        <GiftDetailModal gift={selectedGift} onClose={() => setSelectedGift(null)} />
       )}
     </div>
   );

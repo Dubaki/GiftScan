@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.models.gift import GiftCatalog
 from app.models.snapshot import MarketSnapshot
+from app.services.cache import CacheService
 from app.schemas.gift import (
     GiftOut,
     GiftListResponse,
@@ -25,6 +26,53 @@ router = APIRouter(prefix="/gifts", tags=["gifts"])
 
 # Known marketplace sources
 SOURCES = ["Fragment", "Portals", "Mrkt", "Getgems", "Tonnel"]
+
+# Spread threshold for arbitrage signal
+ARBITRAGE_THRESHOLD_PCT = 5.0
+
+
+def compute_spread(
+    prices: list[MarketplacePrice],
+) -> tuple[
+    Optional[PriceSummary],  # best_price
+    Optional[PriceSummary],  # worst_price
+    Optional[Decimal],       # spread_ton
+    Optional[float],         # spread_pct
+    bool,                    # arbitrage_signal
+]:
+    """Calculate spread metrics from a list of marketplace prices."""
+    valid = [
+        (p.source, p.price, p.currency)
+        for p in prices
+        if p.price is not None
+    ]
+
+    if not valid:
+        return None, None, None, None, False
+
+    sorted_prices = sorted(valid, key=lambda x: x[1])
+    best = sorted_prices[0]
+    worst = sorted_prices[-1]
+
+    best_price = PriceSummary(
+        source=best[0], price=best[1], currency=best[2] or "TON"
+    )
+
+    if len(valid) < 2:
+        return best_price, None, None, None, False
+
+    worst_price = PriceSummary(
+        source=worst[0], price=worst[1], currency=worst[2] or "TON"
+    )
+    spread_ton = worst[1] - best[1]
+    spread_pct = None
+    arbitrage_signal = False
+
+    if best[1] > 0:
+        spread_pct = round(float((spread_ton / best[1]) * 100), 2)
+        arbitrage_signal = spread_pct >= ARBITRAGE_THRESHOLD_PCT
+
+    return best_price, worst_price, spread_ton, spread_pct, arbitrage_signal
 
 
 @router.get("", response_model=GiftListResponse)
@@ -41,6 +89,15 @@ async def list_gifts(
     Supports sorting by name, best price, or spread percentage.
     Supports filtering by minimum spread and search query.
     """
+    # Cache-first: try Redis before hitting DB
+    cache_params = dict(
+        sort_by=sort_by, sort_order=sort_order,
+        min_spread_pct=min_spread_pct, search=search,
+    )
+    cached = await CacheService.get_cached_gifts(**cache_params)
+    if cached is not None:
+        return cached
+
     # Subquery: latest snapshot per (slug, source)
     latest_sq = (
         select(
@@ -119,49 +176,8 @@ async def list_gifts(
 
     for slug, info in gifts_data.items():
         prices = gift_prices.get(slug, [])
-
-        # Calculate spread
-        valid_prices = [
-            (p.source, p.price, p.currency)
-            for p in prices
-            if p.price is not None
-        ]
-
-        best_price = None
-        worst_price = None
-        spread_ton = None
-        spread_pct = None
-        arbitrage_signal = False
-
-        if valid_prices:
-            sorted_prices = sorted(valid_prices, key=lambda x: x[1])
-            best = sorted_prices[0]
-            worst = sorted_prices[-1]
-
-            best_price = PriceSummary(
-                source=best[0], price=best[1], currency=best[2] or "TON"
-            )
-
-            if len(valid_prices) >= 2:
-                worst_price = PriceSummary(
-                    source=worst[0], price=worst[1], currency=worst[2] or "TON"
-                )
-                spread_ton = worst[1] - best[1]
-                if best[1] > 0:
-                    spread_pct = float((spread_ton / best[1]) * 100)
-                    arbitrage_signal = spread_pct >= 5.0
-
-        gift = GiftOut(
-            slug=slug,
-            name=info["name"],
-            image_url=info["image_url"],
-            total_supply=info["total_supply"],
-            prices=prices,
-            best_price=best_price,
-            worst_price=worst_price,
-            spread_ton=spread_ton,
-            spread_pct=round(spread_pct, 2) if spread_pct else None,
-            arbitrage_signal=arbitrage_signal,
+        best_price, worst_price, spread_ton, spread_pct, arbitrage_signal = (
+            compute_spread(prices)
         )
 
         # Apply spread filter
@@ -169,7 +185,20 @@ async def list_gifts(
             if spread_pct is None or spread_pct < min_spread_pct:
                 continue
 
-        gifts.append(gift)
+        gifts.append(
+            GiftOut(
+                slug=slug,
+                name=info["name"],
+                image_url=info["image_url"],
+                total_supply=info["total_supply"],
+                prices=prices,
+                best_price=best_price,
+                worst_price=worst_price,
+                spread_ton=spread_ton,
+                spread_pct=spread_pct,
+                arbitrage_signal=arbitrage_signal,
+            )
+        )
 
     # Sort results
     reverse = sort_order == "desc"
@@ -189,7 +218,7 @@ async def list_gifts(
             reverse=reverse,
         )
 
-    return GiftListResponse(
+    response = GiftListResponse(
         gifts=gifts,
         meta=GiftListMeta(
             total=len(gifts),
@@ -197,6 +226,13 @@ async def list_gifts(
             sources=SOURCES,
         ),
     )
+
+    # Store in cache for next request
+    await CacheService.set_cached_gifts(
+        response.model_dump(mode="json"), **cache_params
+    )
+
+    return response
 
 
 @router.get("/{slug}", response_model=GiftOut)
@@ -253,29 +289,9 @@ async def get_gift(
         for row in snapshots_result
     ]
 
-    # Calculate spread
-    valid_prices = [(p.source, p.price, p.currency) for p in prices if p.price]
-    best_price = worst_price = None
-    spread_ton = spread_pct = None
-    arbitrage_signal = False
-
-    if valid_prices:
-        sorted_prices = sorted(valid_prices, key=lambda x: x[1])
-        best = sorted_prices[0]
-        worst = sorted_prices[-1]
-
-        best_price = PriceSummary(
-            source=best[0], price=best[1], currency=best[2] or "TON"
-        )
-
-        if len(valid_prices) >= 2:
-            worst_price = PriceSummary(
-                source=worst[0], price=worst[1], currency=worst[2] or "TON"
-            )
-            spread_ton = worst[1] - best[1]
-            if best[1] > 0:
-                spread_pct = float((spread_ton / best[1]) * 100)
-                arbitrage_signal = spread_pct >= 5.0
+    best_price, worst_price, spread_ton, spread_pct, arbitrage_signal = (
+        compute_spread(prices)
+    )
 
     return GiftOut(
         slug=gift.slug,
@@ -286,6 +302,6 @@ async def get_gift(
         best_price=best_price,
         worst_price=worst_price,
         spread_ton=spread_ton,
-        spread_pct=round(spread_pct, 2) if spread_pct else None,
+        spread_pct=spread_pct,
         arbitrage_signal=arbitrage_signal,
     )
