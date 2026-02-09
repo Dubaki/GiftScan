@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.api.routes.deals import router as deals_router
 from app.api.routes.gifts import router as gifts_router
-from app.workers.price_updater import price_update_loop
+from app.services.scheduler import start_continuous_scanner, stop_continuous_scanner
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,15 +20,11 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: launch the background price scanner
-    task = asyncio.create_task(price_update_loop())
+    # Startup: launch the continuous price scanner (15-30s intervals)
+    await start_continuous_scanner()
     yield
-    # Shutdown: cancel the background task
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    # Shutdown: stop the scanner gracefully
+    await stop_continuous_scanner()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, debug=settings.DEBUG, lifespan=lifespan)

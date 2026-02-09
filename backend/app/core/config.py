@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Telegram
     BOT_TOKEN: str = ""
     WEBAPP_URL: str = ""
+    TELEGRAM_CHAT_ID: str = ""  # Chat ID for arbitrage notifications
 
     # TON
     SERVICE_WALLET_ADDRESS: str = ""
@@ -38,6 +39,26 @@ class Settings(BaseSettings):
 
     # Escrow
     ESCROW_FEE_PERCENT: float = 2.0
+
+    # Marketplace API Keys
+    PORTALS_AUTH_TOKEN: str = ""  # Portals authorization token (tma query_id=...)
+    TONAPI_KEY: str = ""  # TonAPI authentication key
+
+    # Telegram Client (for internal market access)
+    TELEGRAM_API_ID: str = ""
+    TELEGRAM_API_HASH: str = ""
+    TELEGRAM_PHONE: str = ""  # Phone number for Telethon session
+
+    # Arbitrage settings
+    MARKETPLACE_FEE_PERCENT: float = 5.0  # Combined marketplace + royalty
+    GAS_FEE_TON: float = 0.1  # Estimated gas cost in TON
+    SCAN_INTERVAL_SEC: int = 30  # Continuous scanner interval (15-30s recommended)
+    MIN_PROFIT_TON: float = 2.0  # Minimum profit threshold for Telegram alerts
+
+    # Rate limiting
+    TONAPI_RATE_LIMIT: int = 10  # Requests per second
+    PORTALS_RATE_LIMIT: int = 5  # Requests per second
+    GETGEMS_RATE_LIMIT: int = 3  # Requests per second
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

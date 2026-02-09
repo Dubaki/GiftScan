@@ -1,0 +1,100 @@
+2026-02-08 14:31:44,084 - __main__ - INFO - Starting single scan cycle...
+2026-02-08 14:31:44,116 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2026-02-08 14:31:44,116 - sqlalchemy.engine.Engine - INFO - select pg_catalog.version()
+2026-02-08 14:31:44,116 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-08 14:31:44,116 - sqlalchemy.engine.Engine - INFO - [raw sql] ()
+2026-02-08 14:31:44,118 INFO sqlalchemy.engine.Engine select current_schema()
+2026-02-08 14:31:44,118 - sqlalchemy.engine.Engine - INFO - select current_schema()
+2026-02-08 14:31:44,118 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-08 14:31:44,118 - sqlalchemy.engine.Engine - INFO - [raw sql] ()
+2026-02-08 14:31:44,120 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2026-02-08 14:31:44,120 - sqlalchemy.engine.Engine - INFO - show standard_conforming_strings
+2026-02-08 14:31:44,120 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-08 14:31:44,120 - sqlalchemy.engine.Engine - INFO - [raw sql] ()
+2026-02-08 14:31:44,122 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-08 14:31:44,122 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-02-08 14:31:44,124 INFO sqlalchemy.engine.Engine SELECT gifts_catalog.slug 
+FROM gifts_catalog
+2026-02-08 14:31:44,124 - sqlalchemy.engine.Engine - INFO - SELECT gifts_catalog.slug 
+FROM gifts_catalog
+2026-02-08 14:31:44,124 INFO sqlalchemy.engine.Engine [generated in 0.00011s] ()
+2026-02-08 14:31:44,124 - sqlalchemy.engine.Engine - INFO - [generated in 0.00011s] ()
+2026-02-08 14:31:44,126 - app.services.parsers.tonapi_marketplace_parsers - INFO - Fetching fresh TonAPI listings (cache miss)
+2026-02-08 14:31:44,126 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Fetching collection EQBpMhoMDs...
+2026-02-08 14:31:47,490 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Reached 2k items limit for collection EQBpMhoMDs
+2026-02-08 14:31:47,490 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Fetching collection EQC4XEulxb...
+2026-02-08 14:31:48,984 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Fetching collection EQCE80Aln8...
+2026-02-08 14:31:52,039 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Reached 2k items limit for collection EQCE80Aln8
+2026-02-08 14:31:52,039 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Fetching collection EQCehrkZtK...
+2026-02-08 14:31:55,080 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Reached 2k items limit for collection EQCehrkZtK
+2026-02-08 14:31:55,081 - app.services.parsers.tonapi_enhanced - INFO - TonAPI: Fetched 6884 total items from 4 collections, 360 on sale
+2026-02-08 14:31:55,082 - app.services.parsers.tonapi_marketplace_parsers - INFO - GetGems: 11 gifts with floor prices
+2026-02-08 14:31:55,082 - app.services.scanner - INFO - GetGems bulk fetch: 11 prices
+2026-02-08 14:31:55,082 - app.services.scanner - INFO - Portals bulk fetch: 0 prices
+2026-02-08 14:31:55,082 - app.services.scanner - INFO - MRKT bulk fetch: 0 prices
+2026-02-08 14:31:55,082 - app.services.scanner - INFO - Tonnel bulk fetch: 0 prices
+2026-02-08 14:31:55,082 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'deliciouscake': https://fragment.com/gifts/deliciouscake?sort=price_asc&filter=sale
+2026-02-08 14:31:55,083 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'greencircle': https://fragment.com/gifts/greencircle?sort=price_asc&filter=sale
+2026-02-08 14:31:55,083 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'milkcoffee': https://fragment.com/gifts/milkcoffee?sort=price_asc&filter=sale
+2026-02-08 14:31:57,167 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'greencircle'
+2026-02-08 14:31:57,168 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'bluestar': https://fragment.com/gifts/bluestar?sort=price_asc&filter=sale
+2026-02-08 14:31:57,434 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'deliciouscake'
+2026-02-08 14:31:57,703 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'milkcoffee'
+2026-02-08 14:31:57,704 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'redball': https://fragment.com/gifts/redball?sort=price_asc&filter=sale
+2026-02-08 14:31:57,704 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'lollipop': https://fragment.com/gifts/lollipop?sort=price_asc&filter=sale
+2026-02-08 14:31:59,563 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'bluestar'
+2026-02-08 14:31:59,564 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'pizza': https://fragment.com/gifts/pizza?sort=price_asc&filter=sale
+2026-02-08 14:31:59,839 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'redball'
+2026-02-08 14:31:59,840 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'icecream': https://fragment.com/gifts/icecream?sort=price_asc&filter=sale
+2026-02-08 14:32:00,189 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'lollipop'
+2026-02-08 14:32:00,189 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'champagne': https://fragment.com/gifts/champagne?sort=price_asc&filter=sale
+2026-02-08 14:32:01,782 - app.services.parsers.fragment - INFO - Fragment floor for 'icecream': 4 TON
+2026-02-08 14:32:01,782 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'partypopper': https://fragment.com/gifts/partypopper?sort=price_asc&filter=sale
+2026-02-08 14:32:02,056 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'pizza'
+2026-02-08 14:32:02,057 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'blackrabbit': https://fragment.com/gifts/blackrabbit?sort=price_asc&filter=sale
+2026-02-08 14:32:02,425 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'champagne'
+2026-02-08 14:32:02,425 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'christmastree': https://fragment.com/gifts/christmastree?sort=price_asc&filter=sale
+2026-02-08 14:32:04,079 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'partypopper'
+2026-02-08 14:32:04,080 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'snowman': https://fragment.com/gifts/snowman?sort=price_asc&filter=sale
+2026-02-08 14:32:04,431 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'blackrabbit'
+2026-02-08 14:32:04,431 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'envelope': https://fragment.com/gifts/envelope?sort=price_asc&filter=sale
+2026-02-08 14:32:04,720 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'christmastree'
+2026-02-08 14:32:04,721 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'dancingheart': https://fragment.com/gifts/dancingheart?sort=price_asc&filter=sale
+2026-02-08 14:32:06,362 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'snowman'
+2026-02-08 14:32:06,363 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'chocolatebox': https://fragment.com/gifts/chocolatebox?sort=price_asc&filter=sale
+2026-02-08 14:32:07,160 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'dancingheart'
+2026-02-08 14:32:07,161 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'teddybear': https://fragment.com/gifts/teddybear?sort=price_asc&filter=sale
+2026-02-08 14:32:07,718 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'envelope'
+2026-02-08 14:32:07,719 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'flowers': https://fragment.com/gifts/flowers?sort=price_asc&filter=sale
+2026-02-08 14:32:09,803 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'chocolatebox'
+2026-02-08 14:32:09,804 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'dragon': https://fragment.com/gifts/dragon?sort=price_asc&filter=sale
+2026-02-08 14:32:10,357 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'flowers'
+2026-02-08 14:32:11,141 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'teddybear'
+2026-02-08 14:32:11,142 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'heartlocket': https://fragment.com/gifts/heartlocket?sort=price_asc&filter=sale
+2026-02-08 14:32:11,142 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'lootbag': https://fragment.com/gifts/lootbag?sort=price_asc&filter=sale
+2026-02-08 14:32:12,834 - app.services.parsers.fragment - INFO - Fragment floor for 'heartlocket': 2600 TON
+2026-02-08 14:32:12,834 - app.services.parsers.fragment - INFO - Fetching Fragment price for 'jinglebells': https://fragment.com/gifts/jinglebells?sort=price_asc&filter=sale
+2026-02-08 14:32:13,209 - app.services.parsers.fragment - INFO - Fragment floor for 'lootbag': 160 TON
+2026-02-08 14:32:14,000 - app.services.parsers.fragment - WARNING - Could not parse Fragment price for 'dragon'
+2026-02-08 14:32:15,528 - app.services.parsers.fragment - INFO - Fragment floor for 'jinglebells': 19 TON
+2026-02-08 14:32:15,532 INFO sqlalchemy.engine.Engine INSERT INTO market_snapshots (gift_slug, source, price_amount, currency, scanned_at) SELECT p0::VARCHAR, p1::VARCHAR, p2::NUMERIC, p3::VARCHAR, p4::TIMESTAMP WITHOUT TIME ZONE FROM (VALUES ($1::VARCHAR, $2::VARCHAR, $3::NUMERIC, $4::VARCHAR, $5::TIME ... 1384 characters truncated ... 3, p4, sen_counter) ORDER BY sen_counter RETURNING market_snapshots.id, market_snapshots.id AS id__1
+2026-02-08 14:32:15,532 - sqlalchemy.engine.Engine - INFO - INSERT INTO market_snapshots (gift_slug, source, price_amount, currency, scanned_at) SELECT p0::VARCHAR, p1::VARCHAR, p2::NUMERIC, p3::VARCHAR, p4::TIMESTAMP WITHOUT TIME ZONE FROM (VALUES ($1::VARCHAR, $2::VARCHAR, $3::NUMERIC, $4::VARCHAR, $5::TIME ... 1384 characters truncated ... 3, p4, sen_counter) ORDER BY sen_counter RETURNING market_snapshots.id, market_snapshots.id AS id__1
+2026-02-08 14:32:15,532 INFO sqlalchemy.engine.Engine [generated in 0.00016s (insertmanyvalues) 1/1 (ordered)] ('blackrabbit', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'christmastree', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'snowman', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'envelope', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'dancingheart', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'chocolatebox', 'GetGems', Decimal('6.5'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'teddybear', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'flowers', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'heartlocket', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'lootbag', 'GetGems', Decimal('146.99'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'jinglebells', 'GetGems', Decimal('15.99'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'icecream', 'Fragment', Decimal('4'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'heartlocket', 'Fragment', Decimal('2600'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'lootbag', 'Fragment', Decimal('160'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'jinglebells', 'Fragment', Decimal('19'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540))
+2026-02-08 14:32:15,532 - sqlalchemy.engine.Engine - INFO - [generated in 0.00016s (insertmanyvalues) 1/1 (ordered)] ('blackrabbit', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'christmastree', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'snowman', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'envelope', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'dancingheart', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'chocolatebox', 'GetGems', Decimal('6.5'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'teddybear', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'flowers', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'heartlocket', 'GetGems', Decimal('0'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'lootbag', 'GetGems', Decimal('146.99'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'jinglebells', 'GetGems', Decimal('15.99'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'icecream', 'Fragment', Decimal('4'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'heartlocket', 'Fragment', Decimal('2600'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'lootbag', 'Fragment', Decimal('160'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540), 'jinglebells', 'Fragment', Decimal('19'), 'TON', datetime.datetime(2026, 2, 8, 9, 32, 15, 529540))
+2026-02-08 14:32:15,539 INFO sqlalchemy.engine.Engine COMMIT
+2026-02-08 14:32:15,539 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-02-08 14:32:15,541 - app.services.scanner - INFO - Scan complete: 15 snapshots from 5 parsers in 31.5s
+2026-02-08 14:32:15,542 - __main__ - INFO - 
+============================================================
+2026-02-08 14:32:15,542 - __main__ - INFO - SCAN COMPLETE
+2026-02-08 14:32:15,542 - __main__ - INFO - ============================================================
+2026-02-08 14:32:15,542 - __main__ - INFO - Total gifts scanned: 22
+2026-02-08 14:32:15,542 - __main__ - INFO - Snapshots saved: 15
+2026-02-08 14:32:15,542 - __main__ - INFO - Duration: 31.5s
+2026-02-08 14:32:15,542 - __main__ - INFO - 
+Prices by source:
+2026-02-08 14:32:15,542 - __main__ - INFO -   - Fragment: 4 prices
+2026-02-08 14:32:15,542 - __main__ - INFO -   - GetGems: 11 prices
+2026-02-08 14:32:15,542 - __main__ - INFO -   - Portals: 0 prices
+2026-02-08 14:32:15,542 - __main__ - INFO -   - MRKT: 0 prices
+2026-02-08 14:32:15,542 - __main__ - INFO -   - Tonnel: 0 prices

@@ -10,7 +10,7 @@ import re
 from decimal import Decimal
 from typing import Optional
 
-import httpx
+import aiohttp
 from bs4 import BeautifulSoup
 
 from app.services.parsers.base import BaseParser, GiftPrice
@@ -47,14 +47,16 @@ class FragmentParser(BaseParser):
         logger.info("Fetching Fragment price for '%s': %s", slug, url)
 
         try:
-            async with httpx.AsyncClient(headers=HEADERS, timeout=15.0) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-        except httpx.HTTPError as exc:
+            timeout = aiohttp.ClientTimeout(total=15.0)
+            async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    resp.raise_for_status()
+                    html = await resp.text()
+        except (aiohttp.ClientError, Exception) as exc:
             logger.error("Fragment request failed for '%s': %s", slug, exc)
             return None
 
-        price = _parse_floor_price(resp.text, slug)
+        price = _parse_floor_price(html, slug)
         if price is None:
             return None
 

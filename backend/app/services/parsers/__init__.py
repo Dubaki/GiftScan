@@ -1,22 +1,36 @@
 """
-Parser registry — lists all active marketplace parsers.
+Parser registry — Multi-marketplace architecture.
 
-To add a new parser:
-1. Create parser class inheriting from BaseParser
-2. Add instance to PARSER_REGISTRY below
+Active parsers (3 marketplaces):
+- Fragment: Official Telegram marketplace (HTML scraping)
+- GetGems: Via TonAPI (Getgems Sales)
+- MRKT: Via TonAPI (Marketapp Marketplace)
+
+Disabled (TonAPI doesn't index):
+- Portals: Not supported by TonAPI
+- Tonnel: Not supported by TonAPI
 """
+
+import logging
 
 from app.services.parsers.base import BaseParser, GiftPrice
 from app.services.parsers.fragment import FragmentParser
-from app.services.parsers.th3ryks_market import Th3ryksMarketParser # New import
+from app.services.parsers.tonapi_marketplace_parsers import (
+    GetGemsParser,
+    MRKTParser,
+    # PortalsParser,  # TonAPI doesn't index Portals
+    # TonnelParser,   # TonAPI doesn't index Tonnel
+)
 
-# Active parsers — these will be used by the scanner
+logger = logging.getLogger(__name__)
+
+# Active parsers — 3 marketplaces (Fragment + GetGems + MRKT)
 PARSER_REGISTRY: list[BaseParser] = [
-    FragmentParser(),
-    Th3ryksMarketParser(market_name="portals"),
-    Th3ryksMarketParser(market_name="mrkt"),
-    Th3ryksMarketParser(market_name="getgems"),
-    Th3ryksMarketParser(market_name="tonnel"),
+    FragmentParser(),    # Fragment (official Telegram marketplace)
+    GetGemsParser(),     # GetGems via TonAPI
+    MRKTParser(),        # MRKT (Marketapp) via TonAPI
 ]
+
+logger.info("Parser registry initialized: 3 marketplaces (Fragment, GetGems, MRKT)")
 
 __all__ = ["PARSER_REGISTRY", "BaseParser", "GiftPrice"]

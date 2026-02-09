@@ -14,6 +14,7 @@ from app.core.database import get_session
 from app.models.gift import GiftCatalog
 from app.models.snapshot import MarketSnapshot
 from app.services.cache import CacheService
+from app.services.notifications import arbitrage_notifier
 from app.schemas.gift import (
     GiftOut,
     GiftListResponse,
@@ -24,8 +25,8 @@ from app.schemas.gift import (
 
 router = APIRouter(prefix="/gifts", tags=["gifts"])
 
-# Known marketplace sources
-SOURCES = ["Fragment", "Portals", "Mrkt", "Getgems", "Tonnel"]
+# Known marketplace sources (active only)
+SOURCES = ["Fragment", "Portals"]
 
 # Spread threshold for arbitrage signal
 ARBITRAGE_THRESHOLD_PCT = 5.0
@@ -184,6 +185,18 @@ async def list_gifts(
         if min_spread_pct is not None:
             if spread_pct is None or spread_pct < min_spread_pct:
                 continue
+
+        # Send alert if spread > 3 TON (for testing)
+        if spread_ton and spread_ton >= Decimal("3.0") and best_price and worst_price:
+            await arbitrage_notifier.alert_opportunity(
+                slug=slug,
+                name=info["name"],
+                buy_source=best_price.source,
+                buy_price=best_price.price,
+                sell_source=worst_price.source,
+                sell_price=worst_price.price,
+                spread_ton=spread_ton,
+            )
 
         gifts.append(
             GiftOut(

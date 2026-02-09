@@ -11,25 +11,27 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.gift import GiftCatalog
 from app.models.snapshot import MarketSnapshot
 from app.services.parsers import PARSER_REGISTRY
 from app.services.parsers.base import BaseParser, GiftPrice
+from app.services.notifications import arbitrage_notifier
 
 logger = logging.getLogger(__name__)
 
 # Concurrency settings
-GLOBAL_CONCURRENCY = 20  # Max total concurrent requests
+GLOBAL_CONCURRENCY = 50  # Max total concurrent requests
 PER_SOURCE_CONCURRENCY = {
     "Fragment": 3,  # Be gentle with HTML scraping
     "GetGems": 5,
-    "Tonnel": 1,  # Bulk API
+    "Tonnel": 5,
     "MRKT": 5,
-    "Portals": 1,  # Bulk API
+    "Portals": 5,
 }
 
 
@@ -51,7 +53,7 @@ class GiftScanner:
         Execute a complete scan across all parsers for all gifts.
         Returns scan statistics.
         """
-        scan_start = datetime.now(timezone.utc)
+        scan_start = datetime.utcnow()
 
         # Get all gift slugs
         result = await session.execute(select(GiftCatalog.slug))
@@ -103,7 +105,7 @@ class GiftScanner:
 
         # Phase 3: Persist snapshots
         saved = 0
-        scanned_at = datetime.now(timezone.utc)
+        scanned_at = datetime.utcnow()
 
         # Save bulk results
         for source_name, prices in bulk_results.items():
@@ -115,7 +117,7 @@ class GiftScanner:
                             source=source_name,
                             price_amount=gp.price,
                             currency=gp.currency,
-                            scanned_at=scanned_at,
+                            scanned_at=scanned_at, # Use the already set scanned_at
                         )
                     )
                     saved += 1
@@ -138,13 +140,16 @@ class GiftScanner:
         if saved:
             await session.commit()
 
-        duration = (datetime.now(timezone.utc) - scan_start).total_seconds()
+        duration = (datetime.utcnow() - scan_start).total_seconds()
         logger.info(
             "Scan complete: %d snapshots from %d parsers in %.1fs",
             saved,
             len(self.parsers),
             duration,
         )
+
+        # Check for arbitrage opportunities and send Telegram notifications
+        await self._check_arbitrage_opportunities(session, slugs)
 
         # Collect stats per source
         source_stats = {}
@@ -180,6 +185,93 @@ class GiftScanner:
                         "%s/%s error: %s", parser.source_name, slug, e
                     )
                     return None
+
+    async def _check_arbitrage_opportunities(
+        self, session: AsyncSession, slugs: list[str]
+    ):
+        """
+        Check for arbitrage opportunities and send Telegram notifications.
+
+        Analyzes latest prices for each gift and alerts when spread > 1.5 TON.
+        """
+        # Get gift names for notifications
+        gift_names_stmt = select(GiftCatalog.slug, GiftCatalog.name)
+        result = await session.execute(gift_names_stmt)
+        gift_names = {row.slug: row.name for row in result.all()}
+
+        # Subquery: latest snapshot per (slug, source)
+        latest_sq = (
+            select(
+                MarketSnapshot.gift_slug,
+                MarketSnapshot.source,
+                func.max(MarketSnapshot.scanned_at).label("max_at"),
+            )
+            .group_by(MarketSnapshot.gift_slug, MarketSnapshot.source)
+            .subquery()
+        )
+
+        # Get latest snapshots for all gifts
+        snapshots_stmt = (
+            select(
+                MarketSnapshot.gift_slug,
+                MarketSnapshot.source,
+                MarketSnapshot.price_amount,
+                MarketSnapshot.currency,
+            )
+            .join(
+                latest_sq,
+                and_(
+                    MarketSnapshot.gift_slug == latest_sq.c.gift_slug,
+                    MarketSnapshot.source == latest_sq.c.source,
+                    MarketSnapshot.scanned_at == latest_sq.c.max_at,
+                ),
+            )
+            .where(MarketSnapshot.gift_slug.in_(slugs))
+        )
+
+        result = await session.execute(snapshots_stmt)
+
+        # Group prices by gift
+        gift_prices: dict[str, list[tuple[str, Decimal]]] = {slug: [] for slug in slugs}
+        for row in result.all():
+            gift_prices[row.gift_slug].append((row.source, row.price_amount))
+
+        # Check each gift for arbitrage
+        alerts_sent = 0
+        for slug, prices in gift_prices.items():
+            if len(prices) < 2:
+                continue  # Need at least 2 prices to compare
+
+            # Find min and max prices
+            sorted_prices = sorted(prices, key=lambda x: x[1])
+            buy_source, buy_price = sorted_prices[0]
+            sell_source, sell_price = sorted_prices[-1]
+
+            # Skip if buy price is 0 (invalid data)
+            if buy_price <= 0:
+                logger.debug(f"Skipping {slug}: invalid buy price ({buy_price} TON)")
+                continue
+
+            spread_ton = sell_price - buy_price
+
+            # Send alert if spread > threshold (from notifier settings)
+            if spread_ton >= arbitrage_notifier.min_spread_ton:
+                try:
+                    await arbitrage_notifier.alert_opportunity(
+                        slug=slug,
+                        name=gift_names.get(slug, slug),
+                        buy_source=buy_source,
+                        buy_price=buy_price,
+                        sell_source=sell_source,
+                        sell_price=sell_price,
+                        spread_ton=spread_ton,
+                    )
+                    alerts_sent += 1
+                except Exception as e:
+                    logger.error(f"Failed to send alert for {slug}: {e}")
+
+        if alerts_sent > 0:
+            logger.info(f"📱 Sent {alerts_sent} Telegram arbitrage alerts")
 
 
 # Backward-compatible function for existing code

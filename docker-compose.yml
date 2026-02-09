@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: giftscan-postgres
+    environment:
+      POSTGRES_USER: giftscan
+      POSTGRES_PASSWORD: giftscan_secret
+      POSTGRES_DB: giftscan
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: giftscan-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: giftscan-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@giftscan.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

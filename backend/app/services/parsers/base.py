@@ -13,9 +13,14 @@ class GiftPrice:
     """Price result from a single marketplace for a single gift."""
 
     price: Decimal
-    currency: str  # "TON", "USDT"
+    currency: str  # "TON", "USDT", "Stars"
     source: str  # "Fragment", "GetGems", ...
     slug: str  # canonical gift slug
+
+    # Optional fields for deep arbitrage
+    serial: Optional[int] = None  # NFT serial number (#777, etc.)
+    nft_address: Optional[str] = None  # TON address for verification
+    raw_name: Optional[str] = None  # Original marketplace name
 
 
 class BaseParser(ABC):
