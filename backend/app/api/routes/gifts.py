@@ -26,7 +26,7 @@ from app.schemas.gift import (
 router = APIRouter(prefix="/gifts", tags=["gifts"])
 
 # Known marketplace sources (active only)
-SOURCES = ["Fragment", "Portals"]
+SOURCES = ["Fragment", "GetGems", "MRKT", "Portals", "Tonnel"]
 
 # Spread threshold for arbitrage signal
 ARBITRAGE_THRESHOLD_PCT = 5.0

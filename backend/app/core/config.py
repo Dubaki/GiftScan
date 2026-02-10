@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     TONAPI_RATE_LIMIT: int = 10  # Requests per second
     PORTALS_RATE_LIMIT: int = 5  # Requests per second
     GETGEMS_RATE_LIMIT: int = 3  # Requests per second
+    TONNEL_RATE_LIMIT: int = 5  # Requests per second
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -17,6 +17,7 @@ class MarketplaceLinkGenerator:
     GETGEMS_BASE = "https://getgems.io/nft"
     PORTALS_BASE = "https://portal-market.com/nft"
     TONDIAMONDS_BASE = "https://ton.diamonds/nft"
+    TONNEL_BASE = "https://market.tonnel.network"
     FRAGMENT_BASE = "https://fragment.com/gift"
 
     @classmethod
@@ -45,6 +46,8 @@ class MarketplaceLinkGenerator:
             return cls._getgems_link(nft_address)
         elif "portals" in marketplace or "portal" in marketplace:
             return cls._portals_link(nft_address)
+        elif "tonnel" in marketplace:
+            return cls._tonnel_link(nft_address)
         elif "fragment" in marketplace:
             return cls._fragment_link(gift_slug, serial)
         elif "ton" in marketplace or "diamonds" in marketplace:
@@ -66,6 +69,11 @@ class MarketplaceLinkGenerator:
     def _portals_link(cls, nft_address: str) -> str:
         """Generate Portals NFT link."""
         return f"{cls.PORTALS_BASE}/{nft_address}"
+
+    @classmethod
+    def _tonnel_link(cls, nft_address: str) -> str:
+        """Generate Tonnel marketplace NFT link."""
+        return f"{cls.TONNEL_BASE}/gift/{nft_address}"
 
     @classmethod
     def _tondiamonds_link(cls, nft_address: str) -> str:
