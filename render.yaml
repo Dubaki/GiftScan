@@ -9,8 +9,8 @@ services:
     region: frankfurt  # или oregon, singapore
     plan: free  # Бесплатный tier (спит после 15 мин неактивности)
     rootDir: backend
-    buildCommand: "./build.sh"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "./start.sh"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.11"
