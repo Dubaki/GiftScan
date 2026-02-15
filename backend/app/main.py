@@ -55,3 +55,27 @@ async def health():
         "status": "ok" if db_status == "connected" else "degraded",
         "db": db_status,
     }
+
+
+@app.post("/migrate")
+async def run_migrations():
+    """Run Alembic migrations - use this to initialize database on Render"""
+    try:
+        import subprocess
+        import os
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd=os.getcwd()
+        )
+        return {
+            "success": result.returncode == 0,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode,
+            "cwd": os.getcwd()
+        }
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
