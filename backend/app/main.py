@@ -57,7 +57,7 @@ async def health():
     }
 
 
-@app.post("/migrate")
+@app.get("/migrate")
 async def run_migrations():
     """Run Alembic migrations - use this to initialize database on Render"""
     try:
