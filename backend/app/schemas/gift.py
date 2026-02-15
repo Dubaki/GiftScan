@@ -33,6 +33,8 @@ class GiftOut(BaseModel):
     name: str
     image_url: Optional[str] = None
     total_supply: Optional[int] = None
+    serial_number: Optional[int] = None # New field
+    attributes: Optional[dict] = None # New field for JSONB (represented as dict in Python)
 
     # Multi-source prices
     prices: list[MarketplacePrice] = Field(default_factory=list)

@@ -54,6 +54,7 @@ class NFTListing:
     marketplace: str  # "GetGems", "Portals", "MRKT", etc.
     nft_address: str
     owner_address: Optional[str] = None
+    attributes: Optional[dict] = None # New field for NFT attributes/traits
 
     def to_gift_price(self) -> GiftPrice:
         """Convert to GiftPrice format."""
@@ -65,6 +66,7 @@ class NFTListing:
             serial=self.serial_number,
             nft_address=self.nft_address,
             raw_name=self.gift_name,
+            attributes=self.attributes,
         )
 
 
@@ -239,6 +241,13 @@ class TonAPIEnhancedParser(BaseParser):
         # Owner address (optional)
         owner = item.get("owner", {}).get("address")
 
+        # Extract attributes from metadata
+        nft_attributes = None
+        tonapi_attributes = metadata.get("attributes")
+        if tonapi_attributes and isinstance(tonapi_attributes, list):
+            nft_attributes = {attr.get("trait_type"): attr.get("value") for attr in tonapi_attributes if attr.get("trait_type") and attr.get("value")}
+
+
         return NFTListing(
             gift_name=gift_name,
             gift_slug=gift_slug,
@@ -247,6 +256,7 @@ class TonAPIEnhancedParser(BaseParser):
             marketplace=marketplace,
             nft_address=nft_address,
             owner_address=owner,
+            attributes=nft_attributes,
         )
 
     def _parse_gift_metadata(self, raw_name: str) -> tuple[str, Optional[int]]:

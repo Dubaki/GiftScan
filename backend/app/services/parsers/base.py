@@ -21,6 +21,7 @@ class GiftPrice:
     serial: Optional[int] = None  # NFT serial number (#777, etc.)
     nft_address: Optional[str] = None  # TON address for verification
     raw_name: Optional[str] = None  # Original marketplace name
+    attributes: Optional[dict] = None # New field for NFT attributes/traits
 
 
 class BaseParser(ABC):

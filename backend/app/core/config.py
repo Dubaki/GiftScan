@@ -5,7 +5,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "GiftScan API"
     DEBUG: bool = True
 
-    # PostgreSQL
+    # Database - support both direct URL (Render) and individual params (local)
+    DATABASE_URL: str | None = None
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "giftscan"
@@ -14,18 +15,33 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        # Prefer DATABASE_URL if set (Render deployment)
+        if self.DATABASE_URL:
+            # Render provides postgres://, but we need postgresql+asyncpg://
+            url = self.DATABASE_URL
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        # Fallback to individual params (local development)
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
-    # Redis
+    # Redis - support both direct URL (Render) and individual params (local)
+    REDIS_URL: str | None = None
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
     @property
     def redis_url(self) -> str:
+        # Prefer REDIS_URL if set (Render deployment)
+        if self.REDIS_URL:
+            return self.REDIS_URL
+        # Fallback to individual params (local development)
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     # Telegram

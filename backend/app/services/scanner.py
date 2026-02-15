@@ -107,25 +107,10 @@ class GiftScanner:
         saved = 0
         scanned_at = datetime.utcnow()
 
-        # Save bulk results
+        # Save bulk results (skip zero/negative prices — invalid data)
         for source_name, prices in bulk_results.items():
             for slug, gp in prices.items():
-                if slug in slugs:  # Only save known gifts
-                    session.add(
-                        MarketSnapshot(
-                            gift_slug=slug,
-                            source=source_name,
-                            price_amount=gp.price,
-                            currency=gp.currency,
-                            scanned_at=scanned_at, # Use the already set scanned_at
-                        )
-                    )
-                    saved += 1
-
-        # Save individual results
-        for source_name, slug_prices in individual_results.items():
-            for slug, gp in slug_prices.items():
-                if gp is not None:
+                if slug in slugs and gp.price > 0:
                     session.add(
                         MarketSnapshot(
                             gift_slug=slug,
@@ -133,6 +118,25 @@ class GiftScanner:
                             price_amount=gp.price,
                             currency=gp.currency,
                             scanned_at=scanned_at,
+                            serial_number=gp.serial,
+                            attributes=gp.attributes,
+                        )
+                    )
+                    saved += 1
+
+        # Save individual results (skip zero/negative prices)
+        for source_name, slug_prices in individual_results.items():
+            for slug, gp in slug_prices.items():
+                if gp is not None and gp.price > 0:
+                    session.add(
+                        MarketSnapshot(
+                            gift_slug=slug,
+                            source=source_name,
+                            price_amount=gp.price,
+                            currency=gp.currency,
+                            scanned_at=scanned_at,
+                            serial_number=gp.serial,
+                            attributes=gp.attributes,
                         )
                     )
                     saved += 1
@@ -217,6 +221,8 @@ class GiftScanner:
                 MarketSnapshot.source,
                 MarketSnapshot.price_amount,
                 MarketSnapshot.currency,
+                MarketSnapshot.serial_number,
+                MarketSnapshot.attributes,
             )
             .join(
                 latest_sq,
@@ -232,46 +238,50 @@ class GiftScanner:
         result = await session.execute(snapshots_stmt)
 
         # Group prices by gift
-        gift_prices: dict[str, list[tuple[str, Decimal]]] = {slug: [] for slug in slugs}
+        gift_prices: dict[str, list[tuple[str, Decimal, Optional[int], Optional[dict]]]] = {slug: [] for slug in slugs}
         for row in result.all():
-            gift_prices[row.gift_slug].append((row.source, row.price_amount))
+            serial = getattr(row, 'serial_number', None)
+            attributes = getattr(row, 'attributes', None)
+            gift_prices[row.gift_slug].append((row.source, row.price_amount, serial, attributes))
 
-        # Check each gift for arbitrage
-        alerts_sent = 0
+        # Collect arbitrage opportunities
+        deals_found = 0
         for slug, prices in gift_prices.items():
             if len(prices) < 2:
-                continue  # Need at least 2 prices to compare
+                continue
 
-            # Find min and max prices
+            # NEW: Collect all prices for this slug across sources
+            all_prices_for_slug = {source: price for source, price, _, _ in prices}
+
             sorted_prices = sorted(prices, key=lambda x: x[1])
-            buy_source, buy_price = sorted_prices[0]
-            sell_source, sell_price = sorted_prices[-1]
+            buy_source, buy_price, _, _ = sorted_prices[0]
+            sell_source, sell_price, _, _ = sorted_prices[-1]
 
-            # Skip if buy price is 0 (invalid data)
             if buy_price <= 0:
-                logger.debug(f"Skipping {slug}: invalid buy price ({buy_price} TON)")
                 continue
 
             spread_ton = sell_price - buy_price
 
-            # Send alert if spread > threshold (from notifier settings)
             if spread_ton >= arbitrage_notifier.min_spread_ton:
-                try:
-                    await arbitrage_notifier.alert_opportunity(
-                        slug=slug,
-                        name=gift_names.get(slug, slug),
-                        buy_source=buy_source,
-                        buy_price=buy_price,
-                        sell_source=sell_source,
-                        sell_price=sell_price,
-                        spread_ton=spread_ton,
-                    )
-                    alerts_sent += 1
-                except Exception as e:
-                    logger.error(f"Failed to send alert for {slug}: {e}")
+                buy_source, buy_price, buy_serial, buy_attributes = sorted_prices[0]
+                arbitrage_notifier.collect_opportunity(
+                    slug=slug,
+                    name=gift_names.get(slug, slug),
+                    buy_source=buy_source,
+                    buy_price=buy_price,
+                    sell_source=sell_source,
+                    sell_price=sell_price,
+                    spread_ton=spread_ton,
+                    serial_number=buy_serial,
+                    attributes=buy_attributes,
+                    all_prices=all_prices_for_slug,
+                )
+                deals_found += 1
 
-        if alerts_sent > 0:
-            logger.info(f"📱 Sent {alerts_sent} Telegram arbitrage alerts")
+        logger.info("Found %d arbitrage deals (>= %s TON spread)", deals_found, arbitrage_notifier.min_spread_ton)
+
+        # Send summary table to Telegram (only new deals, only if 3+)
+        await arbitrage_notifier.send_scan_results()
 
 
 # Backward-compatible function for existing code

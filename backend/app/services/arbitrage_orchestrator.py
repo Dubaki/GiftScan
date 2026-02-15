@@ -14,8 +14,11 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 from app.services.arbitrage import fee_calculator
-from app.services.telegram_notifier import send_arbitrage_notification
+from app.services.telegram_notifier import telegram_notifier
 from app.services.marketplace_links import generate_purchase_link
+from app.services.valuation import gift_valuation # New import
+from app.models.gift import GiftCatalog # New import
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ class ArbitrageOpportunityV2:
     gift_name: str
     gift_slug: str
     serial_number: Optional[int]
+    attributes: Optional[dict] = None # New field
 
     # TonAPI data (buy side)
     tonapi_floor_price: Decimal  # Lowest price from TonAPI
@@ -40,6 +44,9 @@ class ArbitrageOpportunityV2:
     gross_profit: Decimal  # Before fees
     total_fees: Decimal
     net_profit: Decimal  # After fees
+    undervalued_premium: Decimal = Decimal('0.0') # New field
+    premium_indicators_count: int = 0 # New field
+    all_prices: Dict[str, Decimal] = field(default_factory=dict) # New field
     roi_percent: float
 
 
@@ -66,6 +73,8 @@ class ArbitrageOrchestrator:
         tonapi_marketplace: str,
         nft_address: str,
         fragment_price: Decimal,
+        attributes: Optional[dict] = None,
+        all_prices: Dict[str, Decimal] = field(default_factory=dict),
     ) -> Optional[ArbitrageOpportunityV2]:
         """
         Analyze a single arbitrage opportunity.
@@ -99,6 +108,19 @@ class ArbitrageOrchestrator:
         gross_profit = fragment_price - tonapi_floor_price
         net_profit = gross_profit - total_fees
 
+        # --- Integrate attribute-based valuation ---
+        undervalued_premium, premium_indicators_count = await gift_valuation.calculate_value_score(
+            gift_slug=gift_slug,
+            gift_name=gift_name,
+            current_price=tonapi_floor_price,
+            serial_number=serial_number,
+            attributes=attributes
+        )
+
+        # Add premium to net profit
+        net_profit += undervalued_premium
+        # -------------------------------------------
+
         # Check if profitable
         if net_profit < self.min_profit_ton:
             return None
@@ -117,9 +139,13 @@ class ArbitrageOrchestrator:
             tonapi_marketplace=tonapi_marketplace,
             nft_address=nft_address,
             fragment_price=fragment_price,
+            attributes=attributes,
             gross_profit=gross_profit,
             total_fees=total_fees,
             net_profit=net_profit,
+            undervalued_premium=undervalued_premium,
+            premium_indicators_count=premium_indicators_count,
+            all_prices=all_prices,
             roi_percent=roi_percent,
         )
 
@@ -140,7 +166,7 @@ class ArbitrageOrchestrator:
 
         # Send notification
         try:
-            await send_arbitrage_notification(
+            await telegram_notifier.send_arbitrage_alert(
                 gift_name=opportunity.gift_name,
                 serial_number=opportunity.serial_number,
                 buy_price_ton=opportunity.tonapi_floor_price,
@@ -148,6 +174,10 @@ class ArbitrageOrchestrator:
                 fragment_price_ton=opportunity.fragment_price,
                 net_profit_ton=opportunity.net_profit,
                 buy_link=buy_link,
+                undervalued_premium=opportunity.undervalued_premium,
+                premium_indicators_count=opportunity.premium_indicators_count,
+                all_prices=opportunity.all_prices,
+                attributes=opportunity.attributes,
             )
 
             logger.info(
@@ -192,12 +222,34 @@ class ArbitrageOrchestrator:
                 tonapi_marketplace=tonapi_gift_price.source.replace("TonAPI-", ""),
                 nft_address=tonapi_gift_price.nft_address or "",
                 fragment_price=fragment_gift_price.price,
+                attributes=tonapi_gift_price.attributes,
             )
 
             if opportunity:
                 # Send alert
                 await self.send_alert(opportunity)
                 opportunities_found += 1
+            else:
+                # Special alert for "Black Backdrop" items at floor price
+                is_black_backdrop = (
+                    tonapi_gift_price.attributes
+                    and tonapi_gift_price.attributes.get("Backdrop") == "Black"
+                )
+                if is_black_backdrop:
+                    buy_link = generate_purchase_link(
+                        nft_address=tonapi_gift_price.nft_address or "",
+                        marketplace=tonapi_gift_price.source.replace("TonAPI-", ""),
+                        gift_slug=slug,
+                        serial=tonapi_gift_price.serial,
+                    )
+                    await telegram_notifier.send_special_find_notification(
+                        gift_name=tonapi_gift_price.raw_name or slug,
+                        serial_number=tonapi_gift_price.serial,
+                        price_ton=tonapi_gift_price.price,
+                        marketplace=tonapi_gift_price.source.replace("TonAPI-", ""),
+                        buy_link=buy_link,
+                        attributes=tonapi_gift_price.attributes,
+                    )
 
         if opportunities_found > 0:
             logger.info(

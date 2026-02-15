@@ -7,13 +7,32 @@ Uses aiogram for async Telegram bot API.
 
 import logging
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Dict
+from dataclasses import field, dataclass
 
 import aiohttp
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ArbitrageDeal:
+    """Single arbitrage opportunity."""
+    slug: str
+    name: str
+    buy_source: str
+    buy_price: Decimal
+    sell_source: str
+    sell_price: Decimal
+    spread_ton: Decimal
+    net_profit: Decimal
+    undervalued_premium: Decimal = Decimal('0.0')
+    premium_indicators_count: int = 0
+    serial_number: Optional[int] = None
+    attributes: Optional[dict] = None
+    all_prices: Dict[str, Decimal] = field(default_factory=dict) # New field
 
 
 class TelegramNotifier:
@@ -49,6 +68,10 @@ class TelegramNotifier:
         buy_link: str,
         sell_marketplace: str = "Fragment",  # Actual sell marketplace
         sell_link: str = "",  # NEW: Link to sell marketplace
+        undervalued_premium: Decimal = Decimal('0.0'),
+        premium_indicators_count: int = 0,
+        all_prices: Dict[str, Decimal] = field(default_factory=dict),
+        attributes: Optional[dict] = None, # New parameter
     ):
         """
         Send arbitrage opportunity notification to Telegram.
@@ -82,6 +105,10 @@ class TelegramNotifier:
             profit=net_profit_ton,
             buy_link=buy_link,
             sell_link=sell_link,
+            undervalued_premium=undervalued_premium,
+            premium_indicators_count=premium_indicators_count,
+            all_prices=all_prices,
+            deal_attributes=attributes,
         )
 
         # Send to Telegram
@@ -96,6 +123,42 @@ class TelegramNotifier:
         except Exception as e:
             logger.error("Failed to send Telegram notification: %s", e)
 
+    async def send_special_find_notification(
+        self,
+        gift_name: str,
+        serial_number: Optional[int],
+        price_ton: Decimal,
+        marketplace: str,
+        buy_link: str,
+        attributes: Optional[dict] = None,
+    ):
+        """
+        Send a notification for a special find, like a black background gift at floor price.
+        """
+        if not self.bot_token or not self.chat_id:
+            logger.warning("Telegram not configured — skipping special find notification")
+            return
+
+        serial_str = f" #{serial_number}" if serial_number else ""
+        
+        attribute_str = ""
+        if attributes and attributes.get("Backdrop") == "Black":
+            attribute_str = "✨ **ЧЕРНЫЙ ФОН!**"
+
+        message = (
+            f"{attribute_str} НАЙДЕН РЕДКИЙ ПРЕДМЕТ!\n\n"
+            f"🏷 <b>Тип:</b> {gift_name}{serial_str}\n"
+            f"💰 <b>Цена:</b> {price_ton:.2f} TON (на {marketplace})\n"
+            f"🔗 <b>Ссылка:</b> {buy_link}\n\n"
+            f"⚡️ <i>GiftScan Valuation Bot</i>"
+        )
+
+        try:
+            await self._send_message(message)
+            logger.info(f"Sent special find notification for {gift_name}{serial_str}")
+        except Exception as e:
+            logger.error(f"Failed to send special find notification: {e}")
+
     def _format_message(
         self,
         gift_name: str,
@@ -107,26 +170,52 @@ class TelegramNotifier:
         profit: Decimal,
         buy_link: str,
         sell_link: str,
+        undervalued_premium: Decimal,
+        premium_indicators_count: int,
+        all_prices: Dict[str, Decimal],
+        deal_attributes: Optional[dict] = None, # New parameter
     ) -> str:
         """Format arbitrage alert message."""
         sell_link_section = f"\n🔗 <b>Ссылка на продажу ({sell_marketplace}):</b>\n{sell_link}\n" if sell_link else ""
 
-        return f"""🚨 <b>АРБИТРАЖ!</b> 🚨
+        # Highlighting logic based on undervalued_premium and premium_indicators_count
+        highlight_prefix = ""
+        # Check for Black Background first (highest priority)
+        if deal_attributes and deal_attributes.get("Background") == "Black":
+            highlight_prefix = "✨ **ЧЕРНЫЙ ФОН!** "
+        elif premium_indicators_count >= 2:
+            highlight_prefix = "🔥 **ВЫГОДНАЯ СДЕЛКА!** "
+        elif undervalued_premium > buy_price * Decimal('0.20'): # Example: highlight if premium is >20% of buy price
+            highlight_prefix = "⭐ **ЦЕННОЕ ПРЕДЛОЖЕНИЕ!** "
 
-🏷 <b>Тип:</b> {gift_name}{serial}
 
-💰 <b>Цена покупки:</b> {buy_price:.2f} TON
-   └ через {buy_marketplace}
+        message_lines = [
+            f"🚨 <b>АРБИТРАЖ!</b> 🚨",
+            f"{highlight_prefix}🏷 <b>Тип:</b> {gift_name}{serial}",
+            f"💰 <b>Цена покупки:</b> {buy_price:.2f} TON",
+            f"   └ через {buy_marketplace}",
+            f"📈 <b>Цена продажи:</b> {sell_price:.2f} TON",
+            f"   └ на {sell_marketplace}",
+            f"💸 <b>Чистый профит:</b> <b>{profit:.2f} TON</b> ({self._calc_roi(profit, buy_price):.1f}%)",
+        ]
 
-📈 <b>Цена продажи:</b> {sell_price:.2f} TON
-   └ на {sell_marketplace}
+        if undervalued_premium > 0:
+            message_lines.append(f"🎁 <b>Премия за атрибуты:</b> +{undervalued_premium:.2f} TON")
 
-💸 <b>Чистый профит:</b> <b>{profit:.2f} TON</b> ({self._calc_roi(profit, buy_price):.1f}%)
+        # Add all available prices for context
+        if all_prices:
+            message_lines.append("\n📊 <b>Цены по площадкам:</b>")
+            for source, price in sorted(all_prices.items(), key=lambda item: item[1]):
+                message_lines.append(f"   - {source}: <b>{price:.2f}</b> TON")
 
-🔗 <b>Ссылка на покупку ({buy_marketplace}):</b>
-{buy_link}
-{sell_link_section}
-⚡️ <i>GiftScan Arbitrage Bot</i>"""
+        message_lines.append(f"\n🔗 <b>Ссылка на покупку ({buy_marketplace}):</b>")
+        message_lines.append(buy_link)
+        if sell_link:
+            message_lines.append(sell_link_section)
+        
+        message_lines.append(f"⚡️ <i>GiftScan Arbitrage Bot</i>")
+
+        return "\n".join(message_lines)
 
     @staticmethod
     def _calc_roi(profit: Decimal, buy_price: Decimal) -> float:
@@ -152,6 +241,13 @@ class TelegramNotifier:
 
                 if not result.get("ok"):
                     raise Exception(f"Telegram API error: {result}")
+
+    async def send_raw_message(self, text: str):
+        """Send a pre-formatted HTML message to Telegram."""
+        if not self.bot_token or not self.chat_id:
+            logger.warning("Telegram not configured — skipping message")
+            return
+        await self._send_message(text)
 
     async def test_connection(self) -> bool:
         """Test Telegram bot connection."""
@@ -190,6 +286,9 @@ async def send_arbitrage_notification(
     buy_link: str,
     sell_marketplace: str = "Fragment",
     sell_link: str = "",
+    undervalued_premium: Decimal = Decimal('0.0'),
+    premium_indicators_count: int = 0,
+    all_prices: Dict[str, Decimal] = field(default_factory=dict),
 ):
     """
     Convenience function to send arbitrage notification.
@@ -215,4 +314,7 @@ async def send_arbitrage_notification(
         buy_link=buy_link,
         sell_marketplace=sell_marketplace,
         sell_link=sell_link,
+        undervalued_premium=undervalued_premium,
+        premium_indicators_count=premium_indicators_count,
+        all_prices=all_prices,
     )

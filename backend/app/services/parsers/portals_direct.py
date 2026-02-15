@@ -43,77 +43,104 @@ class PortalsDirectParser(BaseParser):
 
     async def fetch_all_prices(self) -> dict[str, GiftPrice]:
         """
-        Bulk-fetch all gift floor prices from Portals.
-
-        GET /api/collections/floors
-        Response: {"floorPrices": {"plushpepe": 2.5, "toybear": 14.84, ...}}
-
-        Collection short names are normalized to canonical slugs.
+        Bulk-fetch gift floor prices from Portals, including attribute-specific floors.
+        Uses a direct POST request to /api/gifts/filterFloors for granular data.
         """
         auth_token = await get_portals_auth_token()
         if not auth_token:
             logger.warning("Portals: No auth token, skipping scan")
             return {}
 
-        logger.info("Portals: Fetching floor prices via direct API")
+        results: dict[str, GiftPrice] = {}
+        portals_collection_names = ["Swiss Watches", "Loot Bags", "Scared Cats", "Precious Peaches"] # Example names
 
         headers = {
             "Authorization": f"tma {auth_token}",
             "Accept": "application/json",
         }
 
-        async with self.rate_limiter.acquire("portals"):
-            try:
-                async with AsyncSession(impersonate="chrome120") as session:
-                    resp = await session.get(
-                        f"{PORTALS_API_URL}/collections/floors",
-                        headers=headers,
-                        timeout=15,
-                    )
+        async with AsyncSession(impersonate="chrome120") as session:
+            for collection_name in portals_collection_names:
+                logger.info(f"Portals: Fetching attribute floors for '{collection_name}'")
+                
+                json_payload = {"gift_name": collection_name}
+                
+                async with self.rate_limiter.acquire("portals"):
+                    try:
+                        resp = await session.post(
+                            f"{PORTALS_API_URL}/gifts/filterFloors",
+                            headers=headers,
+                            json=json_payload,
+                            timeout=15,
+                        )
 
-                    # Handle auth expiry — invalidate token and skip this cycle
-                    if resp.status_code == 401 or resp.status_code == 403:
-                        logger.warning("Portals: Auth token rejected (HTTP %d), invalidating", resp.status_code)
-                        invalidate_portals_token()
-                        return {}
+                        if resp.status_code == 401 or resp.status_code == 403:
+                            logger.warning("Portals: Auth token rejected (HTTP %d), invalidating", resp.status_code)
+                            invalidate_portals_token()
+                            continue
 
-                    resp.raise_for_status()
-                    data = resp.json()
-            except Exception as exc:
-                logger.error("Portals: API request failed: %s", exc)
-                return {}
+                        resp.raise_for_status()
+                        floors_data = resp.json()
 
-        floor_prices = data.get("floorPrices")
-        if not floor_prices or not isinstance(floor_prices, dict):
-            logger.warning("Portals: No floorPrices in response")
-            return {}
+                        # Process models
+                        for model_name, details in floors_data.get("models", {}).items():
+                            price_val = details.get("floor")
+                            if price_val is None: continue
+                            price = Decimal(str(price_val))
+                            if price <= 0: continue
 
-        results: dict[str, GiftPrice] = {}
+                            slug = normalize_gift_name(f"{collection_name} {model_name}", source=self.source_name)
+                            if not slug: continue
+                            
+                            results[slug] = GiftPrice(
+                                price=price,
+                                currency="TON",
+                                source=self.source_name,
+                                slug=slug,
+                                raw_name=f"{collection_name} {model_name}",
+                                attributes={"model": model_name} # Store attribute
+                            )
 
-        for short_name, price_val in floor_prices.items():
-            if price_val is None:
-                continue
+                        # Process backdrops
+                        for backdrop_name, details in floors_data.get("backdrops", {}).items():
+                            price_val = details.get("floor")
+                            if price_val is None: continue
+                            price = Decimal(str(price_val))
+                            if price <= 0: continue
 
-            try:
-                price = Decimal(str(price_val))
-            except Exception:
-                continue
+                            slug = normalize_gift_name(f"{collection_name} {backdrop_name}", source=self.source_name)
+                            if not slug: continue
+                            
+                            results[slug] = GiftPrice(
+                                price=price,
+                                currency="TON",
+                                source=self.source_name,
+                                slug=slug,
+                                raw_name=f"{collection_name} {backdrop_name}",
+                                attributes={"backdrop": backdrop_name} # Store attribute
+                            )
 
-            if price <= 0:
-                continue
+                        # Process symbols (if applicable)
+                        for symbol_name, details in floors_data.get("symbols", {}).items():
+                            price_val = details.get("floor")
+                            if price_val is None: continue
+                            price = Decimal(str(price_val))
+                            if price <= 0: continue
 
-            # Normalize the Portals short name to canonical slug
-            slug = normalize_gift_name(short_name, source="Portals")
-            if not slug:
-                continue
+                            slug = normalize_gift_name(f"{collection_name} {symbol_name}", source=self.source_name)
+                            if not slug: continue
+                            
+                            results[slug] = GiftPrice(
+                                price=price,
+                                currency="TON",
+                                source=self.source_name,
+                                slug=slug,
+                                raw_name=f"{collection_name} {symbol_name}",
+                                attributes={"symbol": symbol_name} # Store attribute
+                            )
 
-            results[slug] = GiftPrice(
-                price=price,
-                currency="TON",
-                source=self.source_name,
-                slug=slug,
-                raw_name=short_name,
-            )
+                    except Exception as exc:
+                        logger.error(f"Portals: Error fetching attribute floors for '{collection_name}': {exc}")
 
-        logger.info("Portals: %d gifts with floor prices", len(results))
+        logger.info("Portals: %d gifts with floor prices (including attributes)", len(results))
         return results
