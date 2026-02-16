@@ -30,7 +30,7 @@ services:
       - key: TONAPI_KEY
         sync: false
       - key: MIN_PROFIT_TON
-        value: 2.0
+        value: 10.0
       - key: SCAN_INTERVAL_SEC
         value: 30
     healthCheckPath: /health

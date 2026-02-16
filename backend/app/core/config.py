@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     MARKETPLACE_FEE_PERCENT: float = 5.0  # Combined marketplace + royalty
     GAS_FEE_TON: float = 0.1  # Estimated gas cost in TON
     SCAN_INTERVAL_SEC: int = 30  # Continuous scanner interval (15-30s recommended)
-    MIN_PROFIT_TON: float = 2.0  # Minimum profit threshold for Telegram alerts
+    MIN_PROFIT_TON: float = 10.0  # Minimum profit threshold for Telegram alerts
 
     # Rate limiting
     TONAPI_RATE_LIMIT: int = 10  # Requests per second
