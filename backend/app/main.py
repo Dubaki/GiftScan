@@ -90,3 +90,48 @@ async def run_migrations():
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+
+@app.get("/seed")
+async def seed_catalog():
+    """Seed the gifts catalog with popular TON NFT gifts"""
+    from app.models.gift import GiftCatalog
+    from sqlalchemy import select
+
+    try:
+        # Import seed data
+        from seed_data import GIFTS_SEED_DATA
+
+        async with async_session() as session:
+            # Check if catalog already has data
+            result = await session.execute(select(GiftCatalog))
+            existing = result.scalars().all()
+
+            if existing:
+                return {
+                    "success": False,
+                    "message": f"Catalog already contains {len(existing)} gifts",
+                    "existing_gifts": [g.slug for g in existing]
+                }
+
+            # Add gifts to catalog
+            added_gifts = []
+            for gift_data in GIFTS_SEED_DATA:
+                gift = GiftCatalog(**gift_data)
+                session.add(gift)
+                added_gifts.append(gift_data["slug"])
+
+            await session.commit()
+
+            return {
+                "success": True,
+                "message": f"Successfully added {len(added_gifts)} gifts to catalog",
+                "gifts": added_gifts
+            }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
