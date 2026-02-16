@@ -94,7 +94,7 @@ async def run_migrations():
 
 @app.get("/seed")
 async def seed_catalog():
-    """Seed the gifts catalog with popular TON NFT gifts"""
+    """Seed the gifts catalog with 35 real TON NFT gifts from Fragment"""
     from app.models.gift import GiftCatalog
     from sqlalchemy import select
 
