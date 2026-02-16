@@ -61,26 +61,27 @@ async def health():
 async def run_migrations():
     """Run Alembic migrations - use this to initialize database on Render"""
     try:
-        # Import here to avoid startup issues
-        from alembic.config import Config
-        from alembic import command
+        import subprocess
         import os
 
-        # Get the backend directory (we're already in it on Render)
+        # Get current directory
         backend_dir = os.getcwd()
-        alembic_cfg_path = os.path.join(backend_dir, "alembic.ini")
 
-        # Create Alembic config
-        alembic_cfg = Config(alembic_cfg_path)
-
-        # Run upgrade
-        command.upgrade(alembic_cfg, "head")
+        # Run alembic in subprocess to avoid event loop conflict
+        result = subprocess.run(
+            ["python", "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd=backend_dir
+        )
 
         return {
-            "success": True,
-            "message": "Migrations completed successfully",
-            "cwd": backend_dir,
-            "alembic_ini": alembic_cfg_path
+            "success": result.returncode == 0,
+            "message": "Migrations completed" if result.returncode == 0 else "Migrations failed",
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode,
+            "cwd": backend_dir
         }
     except Exception as e:
         import traceback
