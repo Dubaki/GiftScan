@@ -143,6 +143,28 @@ class ArbitrageNotifier:
 
         self._current_deals = []
 
+    def _is_noteworthy(self, deal: ArbitrageDeal) -> bool:
+        """Check if deal has noteworthy features (rare serial or attributes)."""
+        if not deal.serial_number:
+            return False
+
+        # Low serial numbers (< 1000) are valuable
+        if deal.serial_number < 1000:
+            return True
+
+        # Beautiful numbers
+        sn_str = str(deal.serial_number)
+        if sn_str in ["777", "420", "1234", "5555", "6969", "8888"]:
+            return True
+        if len(set(sn_str)) == 1:  # All same digits (111, 222, etc.)
+            return True
+
+        # Black Backdrop or other rare attributes
+        if deal.attributes and deal.attributes.get("Backdrop") == "Black":
+            return True
+
+        return False
+
     def _format_summary_table(self, deals: list[ArbitrageDeal]) -> str:
         """Format deals as a Telegram-friendly summary table."""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -155,7 +177,8 @@ class ArbitrageNotifier:
 
         for i, deal in enumerate(deals, 1):
             roi = (deal.spread_ton / deal.buy_price * 100) if deal.buy_price > 0 else 0
-            
+
+            # Always show serial number if available
             deal_info = f"<b>{i}. {deal.name}"
             if deal.serial_number:
                 deal_info += f" #{deal.serial_number}"
@@ -166,13 +189,14 @@ class ArbitrageNotifier:
             deal_info += f"   Profit: <b>{deal.net_profit:.1f} TON</b> ({roi:.0f}%)"
 
             if deal.undervalued_premium > 0:
-                deal_info += f"\n   *Undervalued Premium: <b>+{deal.undervalued_premium:.1f} TON</b>*"
+                deal_info += f"\n   💎 Undervalued Premium: <b>+{deal.undervalued_premium:.1f} TON</b>"
 
-            if deal.attributes:
-                deal_info += "\n   Attributes:"
+            # Only show attributes for noteworthy (rare) NFTs
+            if self._is_noteworthy(deal) and deal.attributes:
+                deal_info += "\n   ⭐ Rare attributes:"
                 for attr_key, attr_value in deal.attributes.items():
-                    deal_info += f"\n     - {attr_key}: {attr_value}"
-            
+                    deal_info += f"\n     • {attr_key}: {attr_value}"
+
             lines.append(deal_info)
 
         lines.append("")
