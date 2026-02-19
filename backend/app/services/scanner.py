@@ -48,6 +48,38 @@ class GiftScanner:
             for p in self.parsers
         }
 
+    def _get_rarity_tier(self, serial: Optional[int], attributes: Optional[dict]) -> str:
+        """
+        Determine rarity tier for NFT based on serial number and attributes.
+        NFTs within the same tier have comparable market values.
+        """
+        if not serial:
+            return "unknown"
+
+        # Ultra-rare: serial < 100 or special attributes
+        if serial < 100:
+            return "ultra_rare"
+        if attributes and attributes.get("Backdrop") == "Black":
+            return "ultra_rare"
+
+        # Rare: serial 100-999 or beautiful numbers
+        if serial < 1000:
+            return "rare"
+
+        # Beautiful numbers (regardless of range)
+        sn_str = str(serial)
+        if sn_str in ["777", "420", "1234", "5555", "6969", "8888"]:
+            return "rare"
+        if len(set(sn_str)) == 1:  # All same digits (111, 222, etc.)
+            return "rare"
+
+        # Uncommon: 1000-4999
+        if serial < 5000:
+            return "uncommon"
+
+        # Common: 5000+
+        return "common"
+
     async def run_full_scan(self, session: AsyncSession) -> dict:
         """
         Execute a complete scan across all parsers for all gifts.
@@ -237,20 +269,27 @@ class GiftScanner:
 
         result = await session.execute(snapshots_stmt)
 
-        # Group prices by gift
-        gift_prices: dict[str, list[tuple[str, Decimal, Optional[int], Optional[dict]]]] = {slug: [] for slug in slugs}
+        # Group prices by (gift, rarity_tier) to avoid comparing NFTs with different rarity
+        gift_prices_by_tier: dict[tuple[str, str], list[tuple[str, Decimal, Optional[int], Optional[dict]]]] = {}
+
         for row in result.all():
             serial = getattr(row, 'serial_number', None)
             attributes = getattr(row, 'attributes', None)
-            gift_prices[row.gift_slug].append((row.source, row.price_amount, serial, attributes))
+            tier = self._get_rarity_tier(serial, attributes)
+            key = (row.gift_slug, tier)
 
-        # Collect arbitrage opportunities
+            if key not in gift_prices_by_tier:
+                gift_prices_by_tier[key] = []
+
+            gift_prices_by_tier[key].append((row.source, row.price_amount, serial, attributes))
+
+        # Collect arbitrage opportunities (only within same rarity tier)
         deals_found = 0
-        for slug, prices in gift_prices.items():
+        for (slug, tier), prices in gift_prices_by_tier.items():
             if len(prices) < 2:
                 continue
 
-            # NEW: Collect all prices for this slug across sources
+            # Collect all prices for this slug+tier across sources
             all_prices_for_slug = {source: price for source, price, _, _ in prices}
 
             sorted_prices = sorted(prices, key=lambda x: x[1])
@@ -277,6 +316,10 @@ class GiftScanner:
                     all_prices=all_prices_for_slug,
                 )
                 deals_found += 1
+                logger.info(
+                    "Arbitrage found [%s tier]: %s | BUY %.1f @ %s | SELL %.1f @ %s",
+                    tier, gift_names.get(slug, slug), buy_price, buy_source, sell_price, sell_source
+                )
 
         logger.info("Found %d arbitrage deals (>= %s TON spread)", deals_found, arbitrage_notifier.min_spread_ton)
 

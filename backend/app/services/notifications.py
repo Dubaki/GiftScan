@@ -64,11 +64,14 @@ class ArbitrageNotifier:
         attributes: Optional[dict] = None,
         undervalued_premium: Decimal = Decimal('0.0'),
         premium_indicators_count: int = 0,
-        all_prices: Dict[str, Decimal] = field(default_factory=dict), # New parameter
+        all_prices: Optional[Dict[str, Decimal]] = None,
     ):
         """Collect an arbitrage opportunity (called during scan)."""
         if spread_ton < self.min_spread_ton:
             return
+
+        if all_prices is None:
+            all_prices = {}
 
         net_profit = spread_ton * Decimal("0.9")  # 10% fee estimate
 
