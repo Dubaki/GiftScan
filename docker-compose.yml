@@ -1,6 +1,9 @@
 version: '3.8'
 
 services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16-alpine
     container_name: giftscan-postgres
@@ -13,6 +16,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U giftscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -20,6 +28,11 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -29,6 +42,37 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
+    restart: unless-stopped
+
+  # ── Application ───────────────────────────────────────────────────────────
+
+  backend:
+    build: ./backend
+    container_name: giftscan-backend
+    # Load secrets from backend/.env but override DB/Redis to use Docker network
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://giftscan:giftscan_secret@postgres:5432/giftscan
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api/v1   # relative path → Nginx proxies to backend
+    container_name: giftscan-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:

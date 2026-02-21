@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.api.routes.deals import router as deals_router
 from app.api.routes.gifts import router as gifts_router
+from app.api.routes.stats import router as stats_router
 from app.services.scheduler import start_continuous_scanner, stop_continuous_scanner
 
 logging.basicConfig(
@@ -39,6 +40,7 @@ app.add_middleware(
 
 app.include_router(deals_router, prefix="/api/v1")
 app.include_router(gifts_router, prefix="/api/v1")
+app.include_router(stats_router, prefix="/api/v1")
 
 
 @app.get("/health")

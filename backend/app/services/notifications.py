@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ArbitrageDeal:
-    """Single arbitrage opportunity."""
+    """Single arbitrage / undervalued-floor opportunity."""
+
     slug: str
     name: str
     buy_source: str
@@ -27,16 +28,23 @@ class ArbitrageDeal:
     sell_price: Decimal
     spread_ton: Decimal
     net_profit: Decimal
-    undervalued_premium: Decimal = Decimal('0.0')
+    alert_type: str = "arbitrage"  # "arbitrage" | "undervalued" | "arbitrage_unconfirmed"
+    undervalued_premium: Decimal = Decimal("0.0")
     premium_indicators_count: int = 0
     serial_number: Optional[int] = None
     attributes: Optional[dict] = None
-    all_prices: Dict[str, Decimal] = field(default_factory=dict) # New field
+    all_prices: Dict[str, Decimal] = field(default_factory=dict)
+    # Fair value info (None on cold start)
+    fair_value_median: Optional[Decimal] = None
+    fair_value_sales_count: int = 0
+    fair_value_recent_count: int = 0
+    fair_value_last_days_ago: Optional[int] = None
+    fair_value_confidence: float = 0.0
 
 
 class ArbitrageNotifier:
     """
-    Collects arbitrage opportunities during a scan, then sends
+    Collects opportunities during a scan, then sends
     a single summary table to Telegram if there are new deals.
     """
 
@@ -44,11 +52,10 @@ class ArbitrageNotifier:
         self.min_spread_ton = min_spread_ton
         self.alert_count = 0
 
-        # Track already-sent deals to avoid duplicates
         # Key: "slug:buy_source:sell_source" → (buy_price, sell_price)
         self._sent_deals: dict[str, tuple[Decimal, Decimal]] = {}
 
-        # Deals collected during current scan (reset each scan)
+        # Collected during current scan (reset each scan)
         self._current_deals: list[ArbitrageDeal] = []
 
     def collect_opportunity(
@@ -62,11 +69,13 @@ class ArbitrageNotifier:
         spread_ton: Decimal,
         serial_number: Optional[int] = None,
         attributes: Optional[dict] = None,
-        undervalued_premium: Decimal = Decimal('0.0'),
+        undervalued_premium: Decimal = Decimal("0.0"),
         premium_indicators_count: int = 0,
         all_prices: Optional[Dict[str, Decimal]] = None,
+        fair_value=None,  # FairValue dataclass or None
+        alert_type: str = "arbitrage",
     ):
-        """Collect an arbitrage opportunity (called during scan)."""
+        """Collect an opportunity found during the scan."""
         if spread_ton < self.min_spread_ton:
             return
 
@@ -75,21 +84,35 @@ class ArbitrageNotifier:
 
         net_profit = spread_ton * Decimal("0.9")  # 10% fee estimate
 
-        self._current_deals.append(ArbitrageDeal(
-            slug=slug,
-            name=name,
-            buy_source=buy_source,
-            buy_price=buy_price,
-            sell_source=sell_source,
-            sell_price=sell_price,
-            spread_ton=spread_ton,
-            net_profit=net_profit,
-            serial_number=serial_number,
-            attributes=attributes,
-            undervalued_premium=undervalued_premium,
-            premium_indicators_count=premium_indicators_count,
-            all_prices=all_prices,
-        ))
+        fv_median = fair_value.median_price if fair_value else None
+        fv_count = fair_value.sales_count if fair_value else 0
+        fv_recent = fair_value.recent_count if fair_value else 0
+        fv_days = fair_value.last_sale_days_ago if fair_value else None
+        fv_conf = fair_value.confidence if fair_value else 0.0
+
+        self._current_deals.append(
+            ArbitrageDeal(
+                slug=slug,
+                name=name,
+                buy_source=buy_source,
+                buy_price=buy_price,
+                sell_source=sell_source,
+                sell_price=sell_price,
+                spread_ton=spread_ton,
+                net_profit=net_profit,
+                alert_type=alert_type,
+                serial_number=serial_number,
+                attributes=attributes,
+                undervalued_premium=undervalued_premium,
+                premium_indicators_count=premium_indicators_count,
+                all_prices=all_prices,
+                fair_value_median=fv_median,
+                fair_value_sales_count=fv_count,
+                fair_value_recent_count=fv_recent,
+                fair_value_last_days_ago=fv_days,
+                fair_value_confidence=fv_conf,
+            )
+        )
 
     async def send_scan_results(self):
         """
@@ -98,7 +121,7 @@ class ArbitrageNotifier:
         Resets current deals list after sending.
         """
         if not self._current_deals:
-            logger.info("No arbitrage deals found this scan")
+            logger.info("No opportunities found this scan")
             self._current_deals = []
             return
 
@@ -112,29 +135,37 @@ class ArbitrageNotifier:
                 continue
             new_deals.append(deal)
 
-        # Sort by spread descending (best deals first)
-        new_deals.sort(key=lambda d: d.spread_ton, reverse=True)
+        # Sort: undervalued first, then by spread descending
+        new_deals.sort(
+            key=lambda d: (0 if d.alert_type == "undervalued" else 1, -d.spread_ton)
+        )
 
         # Log all deals
         for deal in new_deals:
             logger.warning(
-                "ARBITRAGE: %s | BUY: %.2f TON @ %s | SELL: %.2f TON @ %s | SPREAD: %.2f TON",
-                deal.name, deal.buy_price, deal.buy_source,
-                deal.sell_price, deal.sell_source, deal.spread_ton,
+                "OPPORTUNITY [%s]: %s | BUY: %.2f TON @ %s | SELL: %.2f TON @ %s | SPREAD: %.2f TON",
+                deal.alert_type,
+                deal.name,
+                deal.buy_price,
+                deal.buy_source,
+                deal.sell_price,
+                deal.sell_source,
+                deal.spread_ton,
             )
 
         if len(new_deals) < 3:
-            logger.info("Only %d new deals (need 3+), skipping Telegram summary", len(new_deals))
+            logger.info(
+                "Only %d new deals (need 3+), skipping Telegram summary",
+                len(new_deals),
+            )
             self._current_deals = []
             return
 
-        # Send summary table to Telegram
         try:
             message = self._format_summary_table(new_deals)
             await telegram_notifier.send_raw_message(message)
-            logger.info("Sent Telegram summary with %d arbitrage deals", len(new_deals))
+            logger.info("Sent Telegram summary with %d deals", len(new_deals))
 
-            # Mark all as sent
             for deal in new_deals:
                 key = f"{deal.slug}:{deal.buy_source}:{deal.sell_source}"
                 self._sent_deals[key] = (deal.buy_price, deal.sell_price)
@@ -147,25 +178,18 @@ class ArbitrageNotifier:
         self._current_deals = []
 
     def _is_noteworthy(self, deal: ArbitrageDeal) -> bool:
-        """Check if deal has noteworthy features (rare serial or attributes)."""
+        """Check if deal has rare serial or attributes."""
         if not deal.serial_number:
             return False
-
-        # Low serial numbers (< 1000) are valuable
         if deal.serial_number < 1000:
             return True
-
-        # Beautiful numbers
         sn_str = str(deal.serial_number)
-        if sn_str in ["777", "420", "1234", "5555", "6969", "8888"]:
+        if sn_str in {"777", "420", "1234", "5555", "6969", "8888"}:
             return True
-        if len(set(sn_str)) == 1:  # All same digits (111, 222, etc.)
+        if len(set(sn_str)) == 1:
             return True
-
-        # Black Backdrop or other rare attributes
         if deal.attributes and deal.attributes.get("Backdrop") == "Black":
             return True
-
         return False
 
     def _format_summary_table(self, deals: list[ArbitrageDeal]) -> str:
@@ -174,27 +198,56 @@ class ArbitrageNotifier:
         total_profit = sum(d.net_profit for d in deals)
 
         lines = [
-            f"<b>ARBITRAGE SUMMARY</b>  |  {len(deals)} deals  |  {timestamp}",
+            f"<b>GIFTSCAN REPORT</b>  |  {len(deals)} deals  |  {timestamp}",
             "",
         ]
 
         for i, deal in enumerate(deals, 1):
             roi = (deal.spread_ton / deal.buy_price * 100) if deal.buy_price > 0 else 0
 
-            # Always show serial number if available
-            deal_info = f"<b>{i}. {deal.name}"
+            # Title line
+            if deal.alert_type == "undervalued":
+                icon = "🔥"
+                label = "UNDERVALUED"
+            elif deal.alert_type == "arbitrage_unconfirmed":
+                icon = "⚠️"
+                label = "ARBITRAGE (no sales data)"
+            else:
+                icon = "💰"
+                label = "ARBITRAGE"
+
+            deal_info = f"{icon} <b>{i}. [{label}] {deal.name}"
             if deal.serial_number:
                 deal_info += f" #{deal.serial_number}"
             deal_info += "</b>\n"
 
             deal_info += f"   BUY  <b>{deal.buy_price:.1f}</b> TON @ {deal.buy_source}\n"
-            deal_info += f"   SELL <b>{deal.sell_price:.1f}</b> TON @ {deal.sell_source}\n"
+
+            if deal.alert_type == "undervalued":
+                deal_info += f"   FAIR VALUE  <b>{deal.sell_price:.1f}</b> TON (market avg)\n"
+            else:
+                deal_info += f"   SELL <b>{deal.sell_price:.1f}</b> TON @ {deal.sell_source}\n"
+
             deal_info += f"   Profit: <b>{deal.net_profit:.1f} TON</b> ({roi:.0f}%)"
 
-            if deal.undervalued_premium > 0:
-                deal_info += f"\n   💎 Undervalued Premium: <b>+{deal.undervalued_premium:.1f} TON</b>"
+            # Sales history info
+            if deal.fair_value_median is not None:
+                conf_pct = int(deal.fair_value_confidence * 100)
+                deal_info += (
+                    f"\n   📊 Sales data: <b>{deal.fair_value_sales_count}</b> sales"
+                )
+                if deal.fair_value_recent_count > 0:
+                    deal_info += f" ({deal.fair_value_recent_count} in last 7d)"
+                if deal.fair_value_last_days_ago is not None:
+                    deal_info += f", last {deal.fair_value_last_days_ago}d ago"
+                deal_info += f" | confidence {conf_pct}%"
+            else:
+                deal_info += "\n   ⚠️ No sales history — price unconfirmed"
 
-            # Only show attributes for noteworthy (rare) NFTs
+            if deal.undervalued_premium > 0:
+                deal_info += f"\n   💎 Premium: <b>+{deal.undervalued_premium:.1f} TON</b>"
+
+            # Show attributes only for noteworthy NFTs
             if self._is_noteworthy(deal) and deal.attributes:
                 deal_info += "\n   ⭐ Rare attributes:"
                 for attr_key, attr_value in deal.attributes.items():

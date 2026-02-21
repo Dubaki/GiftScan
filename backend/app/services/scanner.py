@@ -20,7 +20,9 @@ from app.models.gift import GiftCatalog
 from app.models.snapshot import MarketSnapshot
 from app.services.parsers import PARSER_REGISTRY
 from app.services.parsers.base import BaseParser, GiftPrice
+from app.services.parsers.tonapi_marketplace_parsers import get_tonapi_listings
 from app.services.notifications import arbitrage_notifier
+from app.services.sales_tracker import sales_tracker, _get_rarity_tier
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,13 @@ PER_SOURCE_CONCURRENCY = {
     "MRKT": 5,
     "Portals": 5,
 }
+
+# If sell_price > buy_price × SUSPICIOUS_MULTIPLIER and there are no recent
+# sales confirming the price, skip the alert to avoid false positives.
+SUSPICIOUS_PRICE_MULTIPLIER = Decimal("2.0")
+
+# Minimum confidence from SalesTracker to trust the fair value estimate.
+MIN_CONFIDENCE_FOR_FAIR_VALUE = 0.2
 
 
 class GiftScanner:
@@ -47,38 +56,6 @@ class GiftScanner:
             )
             for p in self.parsers
         }
-
-    def _get_rarity_tier(self, serial: Optional[int], attributes: Optional[dict]) -> str:
-        """
-        Determine rarity tier for NFT based on serial number and attributes.
-        NFTs within the same tier have comparable market values.
-        """
-        if not serial:
-            return "unknown"
-
-        # Ultra-rare: serial < 100 or special attributes
-        if serial < 100:
-            return "ultra_rare"
-        if attributes and attributes.get("Backdrop") == "Black":
-            return "ultra_rare"
-
-        # Rare: serial 100-999 or beautiful numbers
-        if serial < 1000:
-            return "rare"
-
-        # Beautiful numbers (regardless of range)
-        sn_str = str(serial)
-        if sn_str in ["777", "420", "1234", "5555", "6969", "8888"]:
-            return "rare"
-        if len(set(sn_str)) == 1:  # All same digits (111, 222, etc.)
-            return "rare"
-
-        # Uncommon: 1000-4999
-        if serial < 5000:
-            return "uncommon"
-
-        # Common: 5000+
-        return "common"
 
     async def run_full_scan(self, session: AsyncSession) -> dict:
         """
@@ -150,6 +127,7 @@ class GiftScanner:
                             price_amount=gp.price,
                             currency=gp.currency,
                             scanned_at=scanned_at,
+                            nft_address=gp.nft_address,
                             serial_number=gp.serial,
                             attributes=gp.attributes,
                         )
@@ -167,6 +145,7 @@ class GiftScanner:
                             price_amount=gp.price,
                             currency=gp.currency,
                             scanned_at=scanned_at,
+                            nft_address=gp.nft_address,
                             serial_number=gp.serial,
                             attributes=gp.attributes,
                         )
@@ -184,7 +163,25 @@ class GiftScanner:
             duration,
         )
 
-        # Check for arbitrage opportunities and send Telegram notifications
+        # Sync full listings table — detects sold NFTs and maintains inventory
+        try:
+            all_listings = await get_tonapi_listings()  # returns from cache, no extra API call
+            new_sales = await sales_tracker.sync_all_listings(session, all_listings)
+            if new_sales:
+                logger.info("Detected %d new sales this scan", new_sales)
+        except Exception as e:
+            logger.error("Listings sync / sales detection failed: %s", e)
+
+        # Detect rare NFTs priced at/near common-tier floor — instant alert
+        try:
+            from app.services.rare_detector import rare_floor_detector
+            rare_alerts = await rare_floor_detector.check_and_alert(session)
+            if rare_alerts:
+                logger.info("Rare-at-floor: %d alerts fired", len(rare_alerts))
+        except Exception as e:
+            logger.error("Rare floor detection failed: %s", e)
+
+        # Check for arbitrage / undervalued opportunities
         await self._check_arbitrage_opportunities(session, slugs)
 
         # Collect stats per source
@@ -226,9 +223,21 @@ class GiftScanner:
         self, session: AsyncSession, slugs: list[str]
     ):
         """
-        Check for arbitrage opportunities and send Telegram notifications.
+        Check for arbitrage / undervalued opportunities and send Telegram alerts.
 
-        Analyzes latest prices for each gift and alerts when spread > 1.5 TON.
+        Logic per (gift_slug, rarity_tier) group:
+
+        1. Find cheapest current listing (buy_price).
+        2. Get FairValue from SalesTracker (median of recent actual sales).
+        3. Determine realistic sell target:
+           a. If FairValue exists with confidence ≥ MIN_CONFIDENCE:
+              - Use median sale price as sell target.
+              - If buy_price < fair_value × 0.7  → UNDERVALUED ALERT.
+              - If sell_target > buy_price + min_profit → ARBITRAGE ALERT.
+           b. If no FairValue (cold start):
+              - Use highest current listing as sell target BUT only if
+                the spread is "reasonable" (< SUSPICIOUS_MULTIPLIER × buy_price).
+              - Large spreads without sales data are skipped.
         """
         # Get gift names for notifications
         gift_names_stmt = select(GiftCatalog.slug, GiftCatalog.name)
@@ -269,61 +278,178 @@ class GiftScanner:
 
         result = await session.execute(snapshots_stmt)
 
-        # Group prices by (gift, rarity_tier) to avoid comparing NFTs with different rarity
-        gift_prices_by_tier: dict[tuple[str, str], list[tuple[str, Decimal, Optional[int], Optional[dict]]]] = {}
+        # Group by (slug, rarity_tier) — never compare items of different rarity
+        gift_prices_by_tier: dict[
+            tuple[str, str],
+            list[tuple[str, Decimal, Optional[int], Optional[dict]]],
+        ] = {}
 
         for row in result.all():
-            serial = getattr(row, 'serial_number', None)
-            attributes = getattr(row, 'attributes', None)
-            tier = self._get_rarity_tier(serial, attributes)
+            serial = getattr(row, "serial_number", None)
+            attributes = getattr(row, "attributes", None)
+            tier = _get_rarity_tier(serial, attributes)
             key = (row.gift_slug, tier)
 
             if key not in gift_prices_by_tier:
                 gift_prices_by_tier[key] = []
 
-            gift_prices_by_tier[key].append((row.source, row.price_amount, serial, attributes))
+            gift_prices_by_tier[key].append(
+                (row.source, row.price_amount, serial, attributes)
+            )
 
-        # Collect arbitrage opportunities (only within same rarity tier)
         deals_found = 0
+
         for (slug, tier), prices in gift_prices_by_tier.items():
-            if len(prices) < 2:
+            if len(prices) < 1:
                 continue
 
-            # Collect all prices for this slug+tier across sources
-            all_prices_for_slug = {source: price for source, price, _, _ in prices}
-
             sorted_prices = sorted(prices, key=lambda x: x[1])
-            buy_source, buy_price, _, _ = sorted_prices[0]
-            sell_source, sell_price, _, _ = sorted_prices[-1]
+            buy_source, buy_price, buy_serial, buy_attributes = sorted_prices[0]
+            _, highest_listing, _, _ = sorted_prices[-1]
 
             if buy_price <= 0:
                 continue
 
-            spread_ton = sell_price - buy_price
+            # Look up actual sales data for this gift/tier
+            fair_value = await sales_tracker.get_fair_value(
+                session, slug, tier
+            )
 
-            if spread_ton >= arbitrage_notifier.min_spread_ton:
-                buy_source, buy_price, buy_serial, buy_attributes = sorted_prices[0]
-                arbitrage_notifier.collect_opportunity(
-                    slug=slug,
-                    name=gift_names.get(slug, slug),
-                    buy_source=buy_source,
-                    buy_price=buy_price,
-                    sell_source=sell_source,
-                    sell_price=sell_price,
-                    spread_ton=spread_ton,
-                    serial_number=buy_serial,
-                    attributes=buy_attributes,
-                    all_prices=all_prices_for_slug,
-                )
-                deals_found += 1
-                logger.info(
-                    "Arbitrage found [%s tier]: %s | BUY %.1f @ %s | SELL %.1f @ %s",
-                    tier, gift_names.get(slug, slug), buy_price, buy_source, sell_price, sell_source
-                )
+            all_prices_for_slug = {
+                source: price for source, price, _, _ in prices
+            }
 
-        logger.info("Found %d arbitrage deals (>= %s TON spread)", deals_found, arbitrage_notifier.min_spread_ton)
+            if fair_value and fair_value.confidence >= MIN_CONFIDENCE_FOR_FAIR_VALUE:
+                # ── Path A: we have reliable sales history ────────────────
+                sell_target = fair_value.median_price
 
-        # Send summary table to Telegram (only new deals, only if 3+)
+                # Case A1: undervalued floor — buy_price well below fair value
+                if buy_price <= sell_target * Decimal("0.7"):
+                    spread_ton = sell_target - buy_price
+                    if spread_ton >= arbitrage_notifier.min_spread_ton:
+                        arbitrage_notifier.collect_opportunity(
+                            slug=slug,
+                            name=gift_names.get(slug, slug),
+                            buy_source=buy_source,
+                            buy_price=buy_price,
+                            sell_source="market (avg)",
+                            sell_price=sell_target,
+                            spread_ton=spread_ton,
+                            serial_number=buy_serial,
+                            attributes=buy_attributes,
+                            all_prices=all_prices_for_slug,
+                            fair_value=fair_value,
+                            alert_type="undervalued",
+                        )
+                        deals_found += 1
+                        logger.info(
+                            "Undervalued [%s/%s]: buy %.1f TON, fair value %.1f TON "
+                            "(%d sales, confidence %.2f)",
+                            gift_names.get(slug, slug),
+                            tier,
+                            buy_price,
+                            sell_target,
+                            fair_value.sales_count,
+                            fair_value.confidence,
+                        )
+                    continue  # don't double-alert same gift
+
+                # Case A2: cross-marketplace arbitrage validated by sales
+                if len(prices) >= 2:
+                    sell_source, sell_listing, _, _ = sorted_prices[-1]
+                    if sell_source == buy_source:
+                        continue
+
+                    # Cap sell target at fair value + 10% (don't trust stale listings)
+                    realistic_sell = min(
+                        sell_listing, sell_target * Decimal("1.1")
+                    )
+                    spread_ton = realistic_sell - buy_price
+
+                    if spread_ton >= arbitrage_notifier.min_spread_ton:
+                        arbitrage_notifier.collect_opportunity(
+                            slug=slug,
+                            name=gift_names.get(slug, slug),
+                            buy_source=buy_source,
+                            buy_price=buy_price,
+                            sell_source=sell_source,
+                            sell_price=realistic_sell,
+                            spread_ton=spread_ton,
+                            serial_number=buy_serial,
+                            attributes=buy_attributes,
+                            all_prices=all_prices_for_slug,
+                            fair_value=fair_value,
+                            alert_type="arbitrage",
+                        )
+                        deals_found += 1
+                        logger.info(
+                            "Arbitrage [%s/%s]: buy %.1f @ %s → sell %.1f "
+                            "(fair %.1f, %d sales)",
+                            gift_names.get(slug, slug),
+                            tier,
+                            buy_price,
+                            buy_source,
+                            realistic_sell,
+                            sell_target,
+                            fair_value.sales_count,
+                        )
+
+            else:
+                # ── Path B: cold start — no / insufficient sales data ─────
+                if len(prices) < 2:
+                    continue
+
+                sell_source, sell_price, _, _ = sorted_prices[-1]
+                if sell_source == buy_source:
+                    continue
+
+                spread_ton = sell_price - buy_price
+
+                # Only alert on conservative (small) spreads without sales data
+                price_ratio = sell_price / buy_price
+                if price_ratio > SUSPICIOUS_PRICE_MULTIPLIER:
+                    logger.debug(
+                        "Skipping %s/%s: %.1f × price gap with no sales data "
+                        "(buy %.1f, sell %.1f)",
+                        slug,
+                        tier,
+                        float(price_ratio),
+                        buy_price,
+                        sell_price,
+                    )
+                    continue
+
+                if spread_ton >= arbitrage_notifier.min_spread_ton:
+                    arbitrage_notifier.collect_opportunity(
+                        slug=slug,
+                        name=gift_names.get(slug, slug),
+                        buy_source=buy_source,
+                        buy_price=buy_price,
+                        sell_source=sell_source,
+                        sell_price=sell_price,
+                        spread_ton=spread_ton,
+                        serial_number=buy_serial,
+                        attributes=buy_attributes,
+                        all_prices=all_prices_for_slug,
+                        fair_value=None,
+                        alert_type="arbitrage_unconfirmed",
+                    )
+                    deals_found += 1
+                    logger.info(
+                        "Arbitrage [%s/%s] (no sales data): buy %.1f @ %s → sell %.1f @ %s",
+                        gift_names.get(slug, slug),
+                        tier,
+                        buy_price,
+                        buy_source,
+                        sell_price,
+                        sell_source,
+                    )
+
+        logger.info(
+            "Found %d opportunities (>= %s TON spread)", deals_found, arbitrage_notifier.min_spread_ton
+        )
+
+        # Send summary table to Telegram
         await arbitrage_notifier.send_scan_results()
 
 

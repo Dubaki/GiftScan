@@ -18,8 +18,9 @@ class MarketSnapshot(Base):
     source: Mapped[str] = mapped_column(String(50))  # Fragment, GetGems, ...
     price_amount: Mapped[Decimal] = mapped_column(Numeric)
     currency: Mapped[str] = mapped_column(String(10))  # TON, USDT
-    serial_number: Mapped[int | None] = mapped_column(Integer, nullable=True) # New field
-    attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True) # New field for JSONB
+    nft_address: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    serial_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     scanned_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default="now()"
     )

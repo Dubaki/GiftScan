@@ -1,9 +1,10 @@
 import { NavLink } from "react-router-dom";
 
 const tabs = [
-  { to: "/", label: "Scanner", icon: ScannerIcon },
-  { to: "/escrow", label: "Escrow", icon: EscrowIcon },
-  { to: "/profile", label: "Profile", icon: ProfileIcon },
+  { to: "/",       label: "Scanner", icon: ScannerIcon },
+  { to: "/market", label: "Market",  icon: MarketIcon  },
+  { to: "/escrow", label: "Escrow",  icon: EscrowIcon  },
+  { to: "/profile",label: "Profile", icon: ProfileIcon },
 ];
 
 export default function TabBar() {
@@ -36,6 +37,14 @@ function ScannerIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="w-6 h-6">
       <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M8 12h8M12 8v8" />
+    </svg>
+  );
+}
+
+function MarketIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="w-6 h-6">
+      <path d="M3 3h18v4H3zM3 10h4v11H3zM10 10h4v11h-4zM17 10h4v11h-4z" />
     </svg>
   );
 }

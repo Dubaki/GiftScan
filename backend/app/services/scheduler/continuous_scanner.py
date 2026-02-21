@@ -126,6 +126,15 @@ class ContinuousScanner:
                 except Exception as e:
                     logger.warning("Failed to invalidate cache: %s", e)
 
+                # Periodic market digest (every 6 h by default)
+                try:
+                    from app.services.digest import market_digest
+                    sent = await market_digest.send_if_due(session)
+                    if sent:
+                        logger.info("Periodic market digest sent")
+                except Exception as e:
+                    logger.warning("Market digest failed: %s", e)
+
                 # Log summary
                 logger.info(
                     "Scan cycle #%d complete: %d snapshots saved in %.1fs | Sources: %s",

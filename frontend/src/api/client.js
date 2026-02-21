@@ -52,3 +52,12 @@ export function createDeal(body) {
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * Fetch market stats, optionally filtered by gift slug.
+ * @param {string} [slug] - Optional gift slug to filter results
+ * @returns {Promise<Array>} Array of market stats objects
+ */
+export function fetchMarketStats(slug) {
+  return request(`/stats/market${slug ? `?slug=${slug}` : ""}`);
+}
