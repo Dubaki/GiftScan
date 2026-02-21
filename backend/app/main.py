@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -41,6 +42,12 @@ app.add_middleware(
 app.include_router(deals_router, prefix="/api/v1")
 app.include_router(gifts_router, prefix="/api/v1")
 app.include_router(stats_router, prefix="/api/v1")
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect browser visitors to the frontend app."""
+    return RedirectResponse(url="https://giftscan-app.onrender.com")
 
 
 @app.get("/health")
